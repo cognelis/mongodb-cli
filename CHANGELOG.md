@@ -5,6 +5,13 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-12
+
+### Changed
+
+- npm releases are published from GitHub Actions through npm trusted publishing,
+  so each version carries an npm provenance attestation.
+
 ## [0.1.0] - 2026-10-12
 
 First release.

@@ -56,6 +56,9 @@ GitHub Actions with these fields:
 
 Then add the GitHub repository Actions variable `NPM_TRUSTED_PUBLISHING=true`.
 Future version tags publish automatically after successful binary release checks.
+npm expires a trusted publisher configuration that has not completed a publish
+within 48 hours of its creation, so create it shortly before the release that will
+use it; an expired configuration must be deleted and recreated.
 The manual release workflow can also publish when `publish_npm` is selected.
 The workflow uses Node 24 and checks for npm >=11.5.1, grants `id-token: write`
 only to the publishing job, and uses no long-lived npm token or `registry-url`
