@@ -1,7 +1,7 @@
 {
   "name": "@cognelis/mongodb-cli",
   "version": "0.1.0",
-  "description": "MongoDB queries, read-only profiles, diagnostics, and shell completion for terminals and coding agents.",
+  "description": "MongoDB CLI derived from the MongoDB MCP server, with per-profile access modes, diagnostics, and shell completion.",
   "homepage": "https://github.com/cognelis/mongodb-cli#readme",
   "repository": {
     "type": "git",

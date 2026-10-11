@@ -4,6 +4,12 @@ MongoDB queries, aggregations, schema inspection, guarded writes, read-only
 profiles, connection diagnostics, and shell completion for terminals, scripts,
 and coding agents.
 
+Derived from the official [MongoDB MCP server](https://github.com/mongodb-js/mongodb-mcp-server)
+(`mongodb-mcp-server`). The MCP server does not support multiple profiles: its
+read-only mode applies to the whole server. Its tools were therefore
+re-implemented by hand as this CLI, whose named profiles each carry their own
+access mode, so a test profile can allow writes while production stays read-only.
+
 ```sh
 npm install -g @cognelis/mongodb-cli
 mongodb-cli version --output json
