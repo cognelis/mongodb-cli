@@ -1,0 +1,17 @@
+{
+  "name": "mongodb-cli",
+  "owner": {
+    "name": "mongodb-cli contributors"
+  },
+  "metadata": {
+    "description": "Rust MongoDB CLI skills for Claude Code",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "mongodb-cli",
+      "description": "Use the Rust MongoDB CLI safely in shell, CI, and JSON automation workflows.",
+      "source": "./plugins/mongodb-cli"
+    }
+  ]
+}

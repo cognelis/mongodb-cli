@@ -1,0 +1,34 @@
+[workspace]
+members = ["crates/mongodb-client", "crates/mongodb-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/cognelis/mongodb-cli"
+
+[workspace.dependencies]
+assert_cmd = "2"
+# The Docker layer of the MongoDB MCP server's Atlas Local tools; pinned to the same release.
+atlas-local = "=0.7.1"
+base64 = "0.22"
+cliclack = "0.5.5"
+clap = { version = "4.5", features = ["derive", "env"] }
+clap_complete = "4.5"
+console = "0.16"
+directories = "6"
+getrandom = "0.3"
+keyring = { version = "3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }
+mongodb = "3.9"
+predicates = "3"
+# rustls with ring, like the MongoDB driver; other TLS features would pull aws-lc-rs.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+secrecy = "0.10"
+serde = { version = "1", features = ["derive"] }
+# Key order is significant for MongoDB sort specifications and compound index keys.
+serde_json = { version = "1", features = ["preserve_order"] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+toml = "0.9"

@@ -1,0 +1,12 @@
+pub mod args;
+pub mod atlas;
+pub mod completion;
+pub mod config;
+pub mod dispatch;
+pub mod doctor;
+pub mod gate;
+pub mod knowledge;
+pub mod local;
+pub mod onboarding;
+pub mod output;
+pub mod skill_install;

@@ -1,0 +1,6 @@
+interface:
+  display_name: "MongoDB CLI"
+  short_description: "Safe MongoDB CLI diagnostics and automation"
+  default_prompt: "Use $mongodb-cli to diagnose and query MongoDB through the Rust CLI with JSON output."
+policy:
+  allow_implicit_invocation: true

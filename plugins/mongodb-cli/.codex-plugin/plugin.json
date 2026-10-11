@@ -1,0 +1,34 @@
+{
+  "name": "mongodb-cli",
+  "version": "0.1.0",
+  "description": "Use the Rust MongoDB CLI safely in shell, CI, and JSON automation workflows.",
+  "author": {
+    "name": "mongodb-cli contributors"
+  },
+  "homepage": "https://github.com/cognelis/mongodb-cli",
+  "repository": "https://github.com/cognelis/mongodb-cli",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mongodb",
+    "database",
+    "cli",
+    "ci"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MongoDB CLI",
+    "shortDescription": "Safe MongoDB CLI workflows for shell and CI.",
+    "longDescription": "Guides Codex to use the Rust mongodb-cli binary with stable JSON, secret-safe connection strings, read-only profiles, and confirmed destructive operations.",
+    "developerName": "mongodb-cli contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use the MongoDB CLI to find the newest failed orders as JSON.",
+      "Add a secret-safe MongoDB query step to this CI pipeline."
+    ],
+    "brandColor": "#00684A"
+  }
+}

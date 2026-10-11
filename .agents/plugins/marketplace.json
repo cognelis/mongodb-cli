@@ -1,0 +1,20 @@
+{
+  "name": "mongodb-cli",
+  "interface": {
+    "displayName": "MongoDB CLI"
+  },
+  "plugins": [
+    {
+      "name": "mongodb-cli",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mongodb-cli"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

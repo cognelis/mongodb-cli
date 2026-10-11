@@ -1,0 +1,11 @@
+/.toolchain/
+/target/
+/.worktrees/
+*.profraw
+/dist/
+/build/npm/binary/
+/build/npm/node_modules/
+*.tgz
+
+## superpowsers
+docs/superpowers

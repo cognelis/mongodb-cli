@@ -1,0 +1,27 @@
+{
+  "name": "@cognelis/mongodb-cli",
+  "version": "0.1.0",
+  "description": "MongoDB queries, read-only profiles, diagnostics, and shell completion for terminals and coding agents.",
+  "homepage": "https://github.com/cognelis/mongodb-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cognelis/mongodb-cli.git",
+    "directory": "build/npm"
+  },
+  "bugs": {"url": "https://github.com/cognelis/mongodb-cli/issues"},
+  "license": "Apache-2.0",
+  "keywords": ["mongodb", "database", "cli", "json", "automation"],
+  "bin": {"mongodb-cli": "bin/mongodb-cli.js"},
+  "scripts": {
+    "postinstall": "node install.js",
+    "prepublishOnly": "node check-release.js",
+    "test": "node --test install.test.js",
+    "test:package": "node ../../scripts/test-npm-package.js",
+    "release:publish": "node ../../scripts/publish-npm.js"
+  },
+  "files": ["bin/", "install.js", "check-release.js", "README.md", "LICENSE"],
+  "engines": {"node": ">=18"},
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"],
+  "publishConfig": {"access": "public", "registry": "https://registry.npmjs.org/"}
+}
