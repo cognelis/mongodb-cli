@@ -5,6 +5,8 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-12
+
 ### Changed
 
 - Release binaries no longer include a symbol table, which makes them about a
