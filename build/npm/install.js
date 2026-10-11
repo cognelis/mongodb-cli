@@ -8,7 +8,8 @@ const pkg = require('./package.json');
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_CHECKSUM_BYTES = 64 * 1024;
-const DOWNLOAD_TIMEOUT_MS = 30_000;
+const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+const IDLE_TIMEOUT_MS = 30_000;
 const inFlight = new Map();
 
 function assetName(platform = process.platform, arch = process.arch) {
@@ -46,6 +47,7 @@ function checksumFor(text, asset) {
 function download(address, maxBytes, options = {}) {
   const request = options.request || https.get;
   const timeoutMs = options.timeoutMs || DOWNLOAD_TIMEOUT_MS;
+  const idleTimeoutMs = options.idleTimeoutMs || IDLE_TIMEOUT_MS;
   const started = Date.now();
   function get(url, redirects) {
     return new Promise((resolve, reject) => {
@@ -58,10 +60,22 @@ function download(address, maxBytes, options = {}) {
       const remaining = timeoutMs - (Date.now() - started);
       if (remaining <= 0) { reject(new Error('Binary download timed out.')); return; }
       let timer;
+      let idle;
+      let done = false;
+      const settle = () => { done = true; clearTimeout(timer); clearTimeout(idle); };
+      // Reject before destroying so a later "interrupted" event cannot replace the reason.
+      const fail = message => { settle(); reject(new Error(message)); req.destroy(); };
+      // A slow link may take minutes; only a transfer that stops sending data is abandoned.
+      const touch = () => {
+        if (done) return;
+        clearTimeout(idle);
+        idle = setTimeout(() => fail(`Binary download stalled: no data for ${idleTimeoutMs / 1000} seconds.`), idleTimeoutMs);
+      };
       const req = request(parsed, {method: options.method || 'GET', headers: {'User-Agent': 'mongodb-cli-npm-installer'}}, res => {
+        touch();
         if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
           res.destroy();
-          clearTimeout(timer);
+          settle();
           try {
             resolve(get(new URL(res.headers.location, parsed).href, redirects + 1));
           } catch { reject(new Error('Invalid release download redirect.')); }
@@ -69,39 +83,41 @@ function download(address, maxBytes, options = {}) {
         }
         if (res.statusCode !== 200) {
           res.destroy();
-          clearTimeout(timer);
+          settle();
           reject(new Error(`Release download returned HTTP ${res.statusCode} from ${parsed.hostname}.`));
           return;
         }
         const declared = Number(res.headers['content-length']);
         if (options.requireContentLength && (!Number.isFinite(declared) || declared <= 0)) {
           res.destroy();
-          clearTimeout(timer);
+          settle();
           reject(new Error('Release asset has no valid content length.'));
           return;
         }
         if (Number.isFinite(declared) && declared > maxBytes) {
           res.destroy();
-          clearTimeout(timer);
+          settle();
           reject(new Error(`Release download exceeds ${maxBytes} bytes.`));
           return;
         }
         const chunks = [];
         let size = 0;
         res.on('data', chunk => {
+          touch();
           size += chunk.length;
           if (size > maxBytes) {
-            clearTimeout(timer);
+            settle();
             res.destroy();
             reject(new Error(`Release download exceeds ${maxBytes} bytes.`));
           } else chunks.push(chunk);
         });
-        res.on('end', () => { clearTimeout(timer); resolve(Buffer.concat(chunks)); });
-        res.on('error', error => { clearTimeout(timer); reject(error); });
-        res.on('aborted', () => { clearTimeout(timer); reject(new Error('Release download was interrupted.')); });
+        res.on('end', () => { settle(); resolve(Buffer.concat(chunks)); });
+        res.on('error', error => { settle(); reject(error); });
+        res.on('aborted', () => { settle(); reject(new Error('Release download was interrupted.')); });
       });
-      req.on('error', error => { clearTimeout(timer); reject(error); });
-      timer = setTimeout(() => req.destroy(new Error('Binary download timed out.')), remaining);
+      req.on('error', error => { settle(); reject(error); });
+      timer = setTimeout(() => fail('Binary download timed out.'), remaining);
+      touch();
     });
   }
   return get(address, 0);

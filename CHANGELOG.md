@@ -5,6 +5,12 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Fixed
+
+- The npm installer no longer fails on slow connections. A binary download now
+  fails only after 30 seconds without receiving data or 10 minutes in total,
+  instead of having to finish within 30 seconds.
+
 ## [0.1.1] - 2026-10-12
 
 ### Changed

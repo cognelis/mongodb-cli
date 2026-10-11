@@ -119,6 +119,22 @@ test('downloads enforce HTTPS, status, redirect, size and timeout limits', async
   await assert.rejects(installer.download('https://example.invalid', 10, {...requests([{hang: true}]), timeoutMs: 5}), /timed out/);
 });
 
+test('downloads may be slow but must keep receiving data', async () => {
+  const trickle = (count, delayMs) => (async function* () {
+    for (let index = 0; index < count; index++) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      yield Buffer.from('x');
+    }
+  })();
+  // About 150 ms in total, longer than the stall limit, but never silent for that long.
+  const data = await installer.download('https://example.invalid', 20, {...requests([{chunks: trickle(15, 10)}]), idleTimeoutMs: 100});
+  assert.equal(data.toString(), 'x'.repeat(15));
+  const stalled = (async function* () { yield Buffer.from('x'); await new Promise(() => {}); })();
+  await assert.rejects(installer.download('https://example.invalid', 20, {...requests([{chunks: stalled}]), idleTimeoutMs: 30}), /stalled/);
+  await assert.rejects(installer.download('https://example.invalid', 20, {...requests([{hang: true}]), idleTimeoutMs: 30}), /stalled/);
+  await assert.rejects(installer.download('https://example.invalid', 20, {...requests([{chunks: trickle(15, 10)}]), idleTimeoutMs: 100, timeoutMs: 50}), /timed out/);
+});
+
 test('launcher preserves arguments, stdout, stderr and failure exit codes', {skip: process.platform === 'win32'}, async t => {
   const options = fixture(t, {platform: process.platform, arch: process.arch});
   fs.mkdirSync(path.join(options.root, 'bin'));
