@@ -5,6 +5,12 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Fixed
+
+- On a terminal, usage errors and the help shown for a missing subcommand, such as
+  `mongodb-cli` alone, keep their line breaks instead of printing as one line with
+  escaped newlines.
+
 ## [0.1.0] - 2026-10-11
 
 First release.

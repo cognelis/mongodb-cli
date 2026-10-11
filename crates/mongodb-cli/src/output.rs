@@ -194,12 +194,15 @@ fn write_table_meta(diagnostics: &mut impl Write, meta: &Meta) -> io::Result<()>
 
 pub fn emit_error(format: OutputFormat, raw: bool, error: &AppError) {
     let mut diagnostics = io::stderr().lock();
-    let json_mode = raw
-        || matches!(
-            effective_format(format, io::stdout().is_terminal()),
-            OutputFormat::Json
-        );
-    let _ = write_error(&mut diagnostics, json_mode, error);
+    let _ = write_error(&mut diagnostics, json_mode(format, raw), error);
+}
+
+/// Whether errors are written as a JSON envelope rather than as text for a person.
+pub fn json_mode(format: OutputFormat, raw: bool) -> bool {
+    raw || matches!(
+        effective_format(format, io::stdout().is_terminal()),
+        OutputFormat::Json
+    )
 }
 
 fn write_error(diagnostics: &mut impl Write, json_mode: bool, error: &AppError) -> io::Result<()> {

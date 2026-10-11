@@ -150,6 +150,39 @@ fn version_and_usage_errors_follow_the_output_contract() {
 }
 
 #[test]
+fn text_usage_errors_keep_their_line_breaks() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    // A group without a subcommand shows its help, as `mongodb-cli` alone does on a terminal.
+    let output = cli(&config)
+        .args(["--output", "table", "documents"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("Query and modify documents\n"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("\nUsage: mongodb-cli documents"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("\\n"), "{stderr}");
+
+    let output = cli(&config)
+        .args(["--output", "table", "frobnicate"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("error: unrecognized subcommand 'frobnicate'\n"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn completion_scripts_are_plain_shell_code_for_every_shell() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("broken.toml");

@@ -4,7 +4,7 @@ use clap::error::ErrorKind;
 use mongodb_cli::args::OutputFormat;
 use mongodb_cli::dispatch::{self, AppError};
 use mongodb_cli::gate;
-use mongodb_cli::output::{emit_error, emit_success, exit_code};
+use mongodb_cli::output::{emit_error, emit_success, exit_code, json_mode};
 use mongodb_client::ErrorCode;
 
 #[tokio::main]
@@ -22,15 +22,20 @@ async fn main() {
         }
         Err(error) => {
             let arguments: Vec<_> = std::env::args().collect();
-            let failure = gate::disabled_group_error(&error).unwrap_or_else(|| {
-                AppError::validation(error.to_string())
-                    .with_hint("Run `mongodb-cli --help` or the subcommand's `--help`")
-            });
-            emit_error(
-                requested_output_format(&arguments),
-                arguments.iter().any(|argument| argument == "--raw"),
-                &failure,
-            );
+            let format = requested_output_format(&arguments);
+            let raw = arguments.iter().any(|argument| argument == "--raw");
+            let failure = match gate::disabled_group_error(&error) {
+                Some(failure) => failure,
+                // Clap's rendering keeps multi-line usage errors and the help shown for a
+                // missing subcommand readable; the single-line text writer would escape them.
+                None if !json_mode(format, raw) => {
+                    let _ = error.print();
+                    std::process::exit(exit_code(ErrorCode::Validation));
+                }
+                None => AppError::validation(error.to_string())
+                    .with_hint("Run `mongodb-cli --help` or the subcommand's `--help`"),
+            };
+            emit_error(format, raw, &failure);
             std::process::exit(exit_code(failure.code));
         }
     };
