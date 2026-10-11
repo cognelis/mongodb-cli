@@ -8,7 +8,16 @@ The repository also ships nine Agent Skills and plugin manifests so Codex and Cl
 
 ## Build and install
 
-Rust stable is required.
+Install the prebuilt CLI through npm:
+
+```sh
+npm install -g @cognelis/mongodb-cli
+mongodb-cli version --output json
+```
+
+The npm installer verifies the matching release binary's SHA-256. macOS, Windows, and glibc-based Linux builds are provided for x64 and ARM64; see the [npm package requirements](build/npm/README.md). No Rust toolchain is required.
+
+To build from source, Rust stable is required:
 
 ```sh
 cargo build --release
@@ -16,7 +25,7 @@ cargo install --path crates/mongodb-cli --locked
 mongodb-cli version --output json
 ```
 
-The binary is named `mongodb-cli`. The repository is prepared for npm distribution as `@cognelis/mongodb-cli`, whose launcher downloads a prebuilt native binary and verifies its SHA-256 checksum (see the [npm package requirements](build/npm/README.md)); the package becomes installable once the first tagged release is published.
+The binary is named `mongodb-cli`.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history, and [CONTRIBUTING.md](CONTRIBUTING.md) for the versioning and release workflow. The [publishing guide](docs/releasing.md) covers release assets, npm permissions, and trusted publishing.
 
