@@ -1,6 +1,6 @@
 {
   "name": "mongodb-cli",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Use the Rust MongoDB CLI safely in shell, CI, and JSON automation workflows.",
   "author": {
     "name": "mongodb-cli contributors"
