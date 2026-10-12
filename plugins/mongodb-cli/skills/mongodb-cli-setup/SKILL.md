@@ -250,10 +250,12 @@ mongodb-cli init
 **Option A, step by step:**
 
 ```bash
-mongodb-cli profile add <profile>                       # read-only
-mongodb-cli profile add <profile> --access read-write   # or read-write
+mongodb-cli profile add <profile> --description "<what it is for>"                       # read-only
+mongodb-cli profile add <profile> --access read-write --description "<what it is for>"   # or read-write
 mongodb-cli --profile <profile> auth login              # masked prompt; verifies before storing
 ```
+
+Ask the user what each environment is for and record it with `--description`, such as "Production orders cluster, reporting only". Agents choose between profiles by name, description, and access, so a description matters most when names alone are ambiguous. `profile update <profile> --description "<text>"` adds or changes it later, and `--description ""` clears it.
 
 **Option B:**
 

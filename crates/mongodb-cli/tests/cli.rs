@@ -610,6 +610,66 @@ fn profile_settings_are_stored_shown_and_tightened_without_a_terminal() {
 }
 
 #[test]
+fn profile_descriptions_are_stored_listed_and_cleared_without_a_terminal() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    let run = |arguments: &[&str]| {
+        cli(&config)
+            .args(["--output", "json"])
+            .args(arguments)
+            .output()
+            .unwrap()
+    };
+    let output = run(&[
+        "profile",
+        "add",
+        "prod-main",
+        "--description",
+        "Production orders cluster",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        envelope(&output)["data"]["description"],
+        "Production orders cluster"
+    );
+    assert!(run(&["profile", "add", "test"]).status.success());
+    let listed = envelope(&run(&["profile", "list"]))["data"].clone();
+    assert_eq!(
+        listed["prod-main"]["description"],
+        "Production orders cluster"
+    );
+    assert!(listed["test"].get("description").is_none());
+
+    // A description changes no safety setting, so no terminal is needed.
+    let output = run(&[
+        "profile",
+        "update",
+        "test",
+        "--description",
+        "Shared test cluster",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(envelope(&output)["data"]["access"], "read-only");
+    assert_eq!(
+        envelope(&run(&["profile", "show", "test"]))["data"]["description"],
+        "Shared test cluster"
+    );
+    let output = run(&["profile", "update", "test", "--description", ""]);
+    assert!(envelope(&output)["data"].get("description").is_none());
+    let output = run(&["profile", "update", "test", "--description", "two\nlines"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(error_envelope(&output)["error"]["code"], "validation");
+}
+
+#[test]
 fn loosening_profile_settings_needs_an_interactive_terminal() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

@@ -491,7 +491,7 @@ fn profile(
 ) -> Result<DispatchResult, AppError> {
     match command {
         ProfileCommand::Add { name, settings } => {
-            let changes = profile_changes(settings);
+            let changes = profile_changes(settings)?;
             config
                 .add_profile(name, changes.access.unwrap_or_default())
                 .map_err(AppError::validation)?;
@@ -505,7 +505,7 @@ fn profile(
             Ok(local("profile.add", data))
         }
         ProfileCommand::Update { name, settings } => {
-            let changes = profile_changes(settings);
+            let changes = profile_changes(settings)?;
             if changes.is_empty() {
                 return Err(
                     AppError::validation("profile update needs a setting to change")
@@ -578,8 +578,9 @@ fn profile(
     }
 }
 
-/// Omitted flags keep the current value; empty list entries are dropped, so `""` clears a list.
-fn profile_changes(settings: &ProfileSettingsArgs) -> ProfileChanges {
+/// Omitted flags keep the current value; empty list entries are dropped, so `""` clears a list or
+/// the description.
+fn profile_changes(settings: &ProfileSettingsArgs) -> Result<ProfileChanges, AppError> {
     let list = |values: &Option<Vec<String>>| {
         values.as_ref().map(|values| {
             values
@@ -590,8 +591,13 @@ fn profile_changes(settings: &ProfileSettingsArgs) -> ProfileChanges {
                 .collect()
         })
     };
-    ProfileChanges {
+    Ok(ProfileChanges {
         access: settings.access,
+        description: settings
+            .description
+            .as_deref()
+            .map(profile_description)
+            .transpose()?,
         server_side_js: settings.server_side_js,
         index_check: settings.index_check.map(|switch| switch == Switch::On),
         max_documents_per_query: settings.max_documents_per_query,
@@ -600,7 +606,18 @@ fn profile_changes(settings: &ProfileSettingsArgs) -> ProfileChanges {
         aggregation_count_max_time_ms: settings.aggregation_count_max_time_ms,
         disabled_tools: list(&settings.disabled_tools),
         confirmation_required_tools: list(&settings.confirmation_required_tools),
+    })
+}
+
+/// A description is one trimmed line of at most 200 characters.
+fn profile_description(text: &str) -> Result<String, AppError> {
+    let text = text.trim();
+    if text.chars().count() > 200 || text.chars().any(char::is_control) {
+        return Err(AppError::validation(
+            "a profile description must be one line of at most 200 characters",
+        ));
     }
+    Ok(text.to_owned())
 }
 
 /// The profile's name and every stored field; connection strings never live in a profile.
@@ -2512,7 +2529,7 @@ mod tests {
 
     #[test]
     fn profile_flags_become_changes_and_empty_lists_clear() {
-        let changes = |arguments: &[&str]| {
+        let parsed = |arguments: &[&str]| {
             let Command::Profile {
                 command: ProfileCommand::Update { settings, .. },
             } = cli(&[&["profile", "update", "prod"][..], arguments].concat()).command
@@ -2521,6 +2538,7 @@ mod tests {
             };
             profile_changes(&settings)
         };
+        let changes = |arguments: &[&str]| parsed(arguments).unwrap();
         assert!(changes(&[]).is_empty());
         let cleared = changes(&["--disabled-tools", "", "--confirmation-required-tools", ""]);
         assert_eq!(cleared.disabled_tools, Some(Vec::new()));
@@ -2537,6 +2555,21 @@ mod tests {
             profile_value("prod", &profile),
             json!({"name": "prod", "access": "read-only", "index_check": false, "disabled_tools": ["delete", "find"]})
         );
+        profile.apply(&changes(&[
+            "--description",
+            "  Production orders, read-only ",
+        ]));
+        assert_eq!(
+            profile.description.as_deref(),
+            Some("Production orders, read-only")
+        );
+        profile.apply(&changes(&["--description", ""]));
+        assert_eq!(profile.description, None);
+        let long = "x".repeat(201);
+        for invalid in ["two\nlines", long.as_str()] {
+            let error = parsed(&["--description", invalid]).unwrap_err();
+            assert_eq!(error.code, ErrorCode::Validation);
+        }
     }
 
     #[test]

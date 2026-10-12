@@ -70,9 +70,9 @@ mongodb-cli doctor --output json
 Scripts that intentionally persist profiles store only the access mode, safety settings, and a credential-free connection target in the operating-system config directory. Connection strings are verified before they are stored in the operating-system keyring.
 
 ```sh
-mongodb-cli profile add test --access read-write
+mongodb-cli profile add test --access read-write --description "Shared test cluster"
 printf '%s\n' "$TEST_MONGODB_URI" | mongodb-cli --profile test auth login --uri-stdin
-mongodb-cli profile add prod
+mongodb-cli profile add prod --description "Production orders cluster, reporting only"
 mongodb-cli --profile prod auth login
 mongodb-cli profile use test
 mongodb-cli --profile prod doctor --output json
@@ -219,6 +219,7 @@ As in the MCP server, disabling `create`, `update`, or `delete` also refuses `$o
 
 | Flag | TOML key | Default | Effect |
 | --- | --- | --- | --- |
+| `--description TEXT` | `description` | none | What the environment is for, shown by `profile list` and `profile show` |
 | `--access read-only\|read-write` | `access` | `read-only` | Whether writes are allowed |
 | `--server-side-js allow\|deny` | `server_side_js` | `deny` | Whether `$where`, `$function`, and `$accumulator` may run |
 | `--index-check on\|off` | `index_check` | off | Refuse collection scans, like `--require-index` |
@@ -229,9 +230,11 @@ As in the MCP server, disabling `create`, `update`, or `delete` also refuses `$o
 | `--disabled-tools a,b` | `disabled_tools` | none | Refused tools, commands, types, or categories |
 | `--confirmation-required-tools a,b` | `confirmation_required_tools` | none | Additional commands that need `--yes` |
 
-List flags replace the whole list, trim entries, and drop empty ones; an empty value (`--disabled-tools ""`) clears the list. `profile update` without a setting exits 2.
+List flags replace the whole list, trim entries, and drop empty ones; an empty value (`--disabled-tools ""`) clears the list. A description is trimmed and must be one line of at most 200 characters; `--description ""` clears it. `profile update` without a setting exits 2.
 
-Loosening a profile requires confirmation in an interactive terminal: `--access read-write` on a read-only profile, `--server-side-js allow`, or removing entries from `disabled_tools` or `confirmation_required_tools`. Without a terminal it exits 3 (`forbidden`), so a coding agent cannot loosen a profile. Every other change applies directly, including tightening, cap changes, and `--index-check off`; `profile add` never asks for confirmation.
+The bundled skills choose a profile by its name, description, and access: they use a profile the user names, match an environment or purpose that the request mentions against `profile list`, ask the user when several profiles or none could match, and use the default profile only when the request names no environment. Describe profiles whose names alone are ambiguous, such as two production deployments.
+
+Loosening a profile requires confirmation in an interactive terminal: `--access read-write` on a read-only profile, `--server-side-js allow`, or removing entries from `disabled_tools` or `confirmation_required_tools`. Without a terminal it exits 3 (`forbidden`), so a coding agent cannot loosen a profile. Every other change applies directly, including descriptions, tightening, cap changes, and `--index-check off`; `profile add` never asks for confirmation.
 
 ## Environment variables
 

@@ -111,7 +111,14 @@ As in mongosh and the MongoDB MCP server, a single-host `mongodb://` connection 
 
 ## Select an environment
 
-For test and production profiles, pass the same explicit `--profile <name>` to the diagnostic and every command in that workflow. Use names already configured by the user. `profile use <name>` changes the persisted default; one command can select its profile without changing that default.
+Choose the profile before the first command of a workflow:
+
+1. If the user names a configured profile, use it.
+2. If the request names an environment, purpose, or deployment, run `mongodb-cli --output json profile list` and match the request against each profile's name, `description`, and `access`. Use the profile that clearly matches.
+3. If several profiles could match or none does, ask the user which profile to use. Never fall back to the default profile for a request about a different environment, and never switch profiles to get around a read-only refusal.
+4. If the request names no environment, use the default profile, which `profile list` reports as `meta.profile`.
+
+Pass the chosen `--profile <name>` explicitly to the diagnostic and every command in that workflow, and tell the user which profile you used. Use names already configured by the user. Descriptions are the user's own labels, set with `profile add|update --description`; change them only when asked. `profile use <name>` changes the persisted default; one command can select its profile without changing that default.
 
 ```sh
 mongodb-cli --profile prod profile show

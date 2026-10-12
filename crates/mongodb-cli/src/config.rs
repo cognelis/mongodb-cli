@@ -21,6 +21,9 @@ pub const ATLAS_TOOLS_ENV: &str = "MONGODB_CLI_ATLAS_TOOLS";
 pub struct ProfileConfig {
     #[serde(default)]
     pub access: Access,
+    /// What the environment is for, so people and agents can choose the right profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// The connection target without credentials, recorded when the connection string was stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -90,6 +93,8 @@ impl Default for Settings {
 #[derive(Clone, Debug, Default)]
 pub struct ProfileChanges {
     pub access: Option<Access>,
+    /// `Some("")` clears the description.
+    pub description: Option<String>,
     pub server_side_js: Option<ServerSideJs>,
     pub index_check: Option<bool>,
     pub max_documents_per_query: Option<u32>,
@@ -103,6 +108,7 @@ pub struct ProfileChanges {
 impl ProfileChanges {
     pub fn is_empty(&self) -> bool {
         self.access.is_none()
+            && self.description.is_none()
             && self.server_side_js.is_none()
             && self.index_check.is_none()
             && self.max_documents_per_query.is_none()
@@ -179,6 +185,9 @@ impl ProfileConfig {
         let before = format!("{self:?}");
         if let Some(access) = changes.access {
             self.access = access;
+        }
+        if let Some(value) = &changes.description {
+            self.description = (!value.is_empty()).then(|| value.clone());
         }
         if let Some(value) = changes.server_side_js {
             self.server_side_js = Some(value);

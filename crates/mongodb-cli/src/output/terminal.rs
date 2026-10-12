@@ -69,12 +69,17 @@ impl<W: Write> Renderer<'_, W> {
         let rows: Vec<Value> = profiles
             .iter()
             .map(|(name, profile)| {
-                json!({
+                let mut row = json!({
                     "current": if current == Some(name) { "*" } else { "" },
                     "name": name,
                     "access": profile.get("access").unwrap_or(&Value::Null),
                     "target": profile.get("target").unwrap_or(&Value::Null),
-                })
+                });
+                // The column appears only once some profile is described.
+                if let Some(description) = profile.get("description") {
+                    row["description"] = description.clone();
+                }
+                row
             })
             .collect();
         self.array(&rows, 0)
@@ -303,9 +308,14 @@ fn contains_collection(row: &Value) -> bool {
 fn ordered_keys<'a>(command: &str, keys: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
     let preferred: &[&str] = match command {
         "doctor" => &["name", "status", "message"],
-        "profile.list" | "config.show" => {
-            &["current", "name", "access", "target", "current_profile"]
-        }
+        "profile.list" | "config.show" => &[
+            "current",
+            "name",
+            "access",
+            "description",
+            "target",
+            "current_profile",
+        ],
         "skills.install" => &["agent", "skill", "status", "path"],
         "databases.list" => &["name", "sizeOnDisk", "empty"],
         "collections.list" => &["name", "type"],
@@ -399,17 +409,18 @@ mod tests {
     #[test]
     fn profile_lists_mark_the_default_and_show_access_and_target() {
         let data = json!({
-            "prod": {"access": "read-only", "target": "mongodb://prod.example.com"},
+            "prod": {"target": "mongodb://prod.example.com", "description": "Orders", "access": "read-only"},
             "test": {"access": "read-write"}
         });
         let (output, _) = render("profile.list", &data, 120);
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(
             lines[0].split_whitespace().collect::<Vec<_>>(),
-            ["current", "name", "access", "target"]
+            ["current", "name", "access", "description", "target"]
         );
         assert!(lines[2].starts_with('*'));
         assert!(lines[2].contains("read-only"));
+        assert!(lines[2].contains("Orders"));
         assert!(lines[2].contains("mongodb://prod.example.com"));
         assert!(lines[3].contains("read-write"));
     }

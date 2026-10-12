@@ -656,6 +656,11 @@ pub enum Switch {
 /// Profile settings; omitted flags keep the current value.
 #[derive(Clone, Debug, Default, Args)]
 pub struct ProfileSettingsArgs {
+    /// Describe what the environment is for.
+    ///
+    /// Shown by `profile list` and `profile show` so people and agents can choose the right profile. One line of at most 200 characters; an empty value clears it.
+    #[arg(long)]
+    pub description: Option<String>,
     /// Set the access mode (new profiles: read-only).
     #[arg(long, value_enum)]
     pub access: Option<Access>,

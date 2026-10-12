@@ -5,6 +5,13 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Added
+
+- Profile descriptions: `profile add|update --description` records what an
+  environment is for, and `profile list` and `profile show` return it. The bundled
+  skills choose a profile by its name, description, and access, and ask the user
+  when several profiles or none could match the request.
+
 ## [0.1.2] - 2026-10-12
 
 ### Changed
