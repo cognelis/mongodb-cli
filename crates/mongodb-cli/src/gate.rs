@@ -96,6 +96,7 @@ fn without_gated_groups(full: &Command) -> Command {
     Command::new("mongodb-cli")
         .version(env!("CARGO_PKG_VERSION"))
         .about(full.get_about().cloned().unwrap_or_default())
+        .after_help(full.get_after_help().cloned().unwrap_or_default())
         .subcommand_required(true)
         .arg_required_else_help(true)
         .args(full.get_arguments().cloned())

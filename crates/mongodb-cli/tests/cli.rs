@@ -1141,3 +1141,100 @@ fn config_show_and_path_never_include_credentials() {
         config.display().to_string()
     );
 }
+
+#[test]
+fn over_cap_limits_unknown_profiles_and_profile_databases() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    let run = |arguments: &[&str], input: Option<&str>| {
+        let mut command = cli(&config);
+        command
+            .env("MONGODB_CLI_CREDENTIAL_STORE", "file")
+            .args(["--output", "json"])
+            .args(arguments);
+        if let Some(input) = input {
+            command.write_stdin(input);
+        }
+        command.output().unwrap()
+    };
+    assert!(
+        run(
+            &["profile", "add", "local", "--description", "本地开发环境"],
+            None
+        )
+        .status
+        .success()
+    );
+    let output = run(
+        &[
+            "--profile",
+            "local",
+            "auth",
+            "login",
+            "--uri-stdin",
+            "--no-verify",
+        ],
+        Some("mongodb://127.0.0.1:9/shop\n"),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Profiles name the database their connection string selects.
+    assert_eq!(
+        envelope(&run(&["profile", "list"], None))["data"]["local"]["database"],
+        "shop"
+    );
+    assert_eq!(
+        envelope(&run(&["profile", "show", "local"], None))["data"]["database"],
+        "shop"
+    );
+
+    // A limit above the page cap is refused before any connection, so it cannot be cut short.
+    let output = run(
+        &[
+            "--profile",
+            "local",
+            "documents",
+            "find",
+            "shop",
+            "orders",
+            "--limit",
+            "150",
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(2));
+    let error = error_envelope(&output);
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("maxDocumentsPerQuery of 100"),
+        "{error}"
+    );
+    assert!(
+        error["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("--offset"),
+        "{error}"
+    );
+
+    // An unknown profile names the configured ones, so the next command can pick the right one.
+    let output = run(
+        &["--profile", "prod", "documents", "count", "shop", "orders"],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(3));
+    let message = error_envelope(&output)["error"]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        message.contains("available: local (本地开发环境)"),
+        "{message}"
+    );
+}

@@ -5,6 +5,27 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Added
+
+- `profile list` and `profile show` return `database`, the database a profile's
+  connection string names.
+- An unknown profile name fails with the configured profiles and their
+  descriptions, so the next command can pick the right one.
+- The top-level help ends with notes for coding agents: load the bundled skill,
+  run `profile list` first, use production only when asked, and read stderr with
+  `--raw`.
+
+### Changed
+
+- A `--limit` above the connection's `maxDocumentsPerQuery` exits 2 before
+  connecting, instead of returning a page cut short at the cap that is easy to
+  take for the whole result. Page with `--offset` or use `documents export`.
+- Partial-result warnings suggest a larger `--limit` only when that would return
+  more documents.
+- The core skill asks agents to load it before the first mongodb-cli command,
+  starts with a short checklist, and uses placeholder profile names in its
+  examples.
+
 ## [0.3.1] - 2026-10-12
 
 ### Fixed

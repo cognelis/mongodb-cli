@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 #[command(
     name = "mongodb-cli",
     version,
-    about = "Query and manage MongoDB from the command line"
+    about = "Query and manage MongoDB from the command line",
+    after_help = "Coding agents: load the bundled mongodb-cli skill before the first command (install it with `mongodb-cli skills install`). Run `mongodb-cli profile list` on its own first and use a production profile only when the user asks for production. Database and collection names are positional arguments. A page holds at most 100 documents by default; page with --offset, and with --raw read stderr, where partial-result warnings go."
 )]
 pub struct Cli {
     /// Select a saved environment.
@@ -608,9 +609,11 @@ pub struct QueryArgs {
 
 #[derive(Clone, Debug, Args)]
 pub struct PageArgs {
-    /// Limit the number of documents.
-    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=10_000))]
-    pub limit: u32,
+    /// Limit the number of documents (default 10).
+    ///
+    /// A limit above the connection's maxDocumentsPerQuery (default 100) is refused; page with --offset, or use `documents export` for every match.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=10_000))]
+    pub limit: Option<u32>,
     /// Skip this many documents.
     #[arg(long, visible_alias = "skip", default_value_t = 0)]
     pub offset: u32,

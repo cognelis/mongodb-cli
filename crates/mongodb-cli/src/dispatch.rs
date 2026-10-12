@@ -256,6 +256,7 @@ async fn remote(
         &target.settings,
         cli.yes,
     )?;
+    check_page_limit(&operation, &target.settings)?;
     let access = target.access;
     let connection = config
         .resolve_credentials(target, store)
@@ -290,6 +291,21 @@ async fn remote(
         failure_code: None,
         emitted,
     })
+}
+
+/// Refuse a `--limit` above the page cap: the page would stop short of it, which is easy to take
+/// for the whole result, and no larger limit could return more.
+fn check_page_limit(operation: &Operation, settings: &Settings) -> Result<(), AppError> {
+    let cap = settings.max_documents_per_query;
+    match operation.page().and_then(|page| page.limit) {
+        Some(limit) if cap > 0 && limit > cap => Err(AppError::validation(format!(
+            "--limit {limit} is above this connection's maxDocumentsPerQuery of {cap}"
+        ))
+        .with_hint(format!(
+            "page with --limit {cap} and --offset, or use `documents export` for every matching document"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Refuse what the connection does not allow, before credentials are read or a server is contacted.
@@ -579,11 +595,12 @@ fn profile(
             Ok(result)
         }
         ProfileCommand::List => {
-            let mut result = local(
-                "profile.list",
-                serde_json::to_value(&config.profiles)
-                    .map_err(|error| AppError::config(error.to_string()))?,
-            );
+            let profiles: Map<String, Value> = config
+                .profiles
+                .iter()
+                .map(|(name, profile)| (name.clone(), Value::Object(profile_fields(profile))))
+                .collect();
+            let mut result = local("profile.list", Value::Object(profiles));
             result.meta.profile.clone_from(&config.current_profile);
             Ok(result)
         }
@@ -596,7 +613,7 @@ fn profile(
             let profile = config
                 .profiles
                 .get(&name)
-                .ok_or_else(|| AppError::config(format!("profile '{name}' does not exist")))?;
+                .ok_or_else(|| AppError::config(config.unknown_profile(&name)))?;
             let mut data = profile_value(&name, profile);
             // Which credentials the keyring holds, as booleans; never their values.
             data["credentials"] =
@@ -667,10 +684,24 @@ fn profile_description(text: &str) -> Result<String, AppError> {
 fn profile_value(name: &str, profile: &ProfileConfig) -> Value {
     let mut fields = Map::new();
     fields.insert("name".into(), json!(name));
-    if let Ok(Value::Object(stored)) = serde_json::to_value(profile) {
-        fields.extend(stored);
-    }
+    fields.extend(profile_fields(profile));
     Value::Object(fields)
+}
+
+/// A profile's stored settings plus the database its connection string names.
+fn profile_fields(profile: &ProfileConfig) -> Map<String, Value> {
+    let mut fields = match serde_json::to_value(profile) {
+        Ok(Value::Object(stored)) => stored,
+        _ => Map::new(),
+    };
+    if let Some(database) = profile
+        .target
+        .as_deref()
+        .and_then(mongodb_client::uri::default_database)
+    {
+        fields.insert("database".into(), json!(database));
+    }
+    fields
 }
 
 fn logout(
@@ -1206,6 +1237,16 @@ impl Operation {
         })
     }
 
+    /// The page arguments of a paged command.
+    fn page(&self) -> Option<&PageArgs> {
+        match self {
+            Self::DatabasesAggregate { page, .. }
+            | Self::DocumentsFind { page, .. }
+            | Self::DocumentsAggregate { page, .. } => Some(page),
+            _ => None,
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Self::ServerInfo => "server.info",
@@ -1734,6 +1775,9 @@ async fn aggregated(
     Ok(paged(page, limits, result))
 }
 
+/// The page size when `--limit` is not given.
+const DEFAULT_PAGE_LIMIT: u32 = 10;
+
 /// The settings that can shorten a page, named as `meta.appliedLimits` reports them.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct PageLimits {
@@ -1741,6 +1785,8 @@ struct PageLimits {
     documents: Option<&'static str>,
     /// The source of the byte limit; reported only when the page was truncated.
     bytes: Option<&'static str>,
+    /// Whether a larger --limit could return more documents per page.
+    can_raise_limit: bool,
 }
 
 /// Cap the requested page by the connection's settings, as the MCP server caps its tools.
@@ -1750,10 +1796,11 @@ fn page_request(
     count_time_cap: Duration,
 ) -> (PageRequest, PageLimits) {
     let cap = settings.max_documents_per_query;
+    let requested = page.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
     let limit = if cap > 0 {
-        page.limit.min(cap)
+        requested.min(cap)
     } else {
-        page.limit
+        requested
     };
     let (max_bytes, bytes) = byte_limit(page.response_bytes_limit, settings.max_bytes_per_query);
     (
@@ -1764,8 +1811,9 @@ fn page_request(
             count_time_cap,
         },
         PageLimits {
-            documents: (limit < page.limit).then_some("maxDocumentsPerQuery"),
+            documents: (limit < requested).then_some("maxDocumentsPerQuery"),
             bytes,
+            can_raise_limit: cap == 0 || limit < cap,
         },
     )
 }
@@ -1799,13 +1847,18 @@ fn paged(page: PageRequest, limits: PageLimits, result: Page) -> (Value, Meta) {
     // A short page is easy to mistake for the whole result, so say so even without the envelope.
     if result.has_more {
         let next = page.offset.saturating_add(returned);
+        // A larger --limit helps only when no cap cut this page and the limit is below the cap.
+        let cut_short = limits.documents.is_some() || (limits.bytes.is_some() && result.truncated);
+        let continuation = if limits.can_raise_limit && !cut_short {
+            format!("continue with --offset {next} or raise --limit")
+        } else {
+            format!("continue with --offset {next}")
+        };
         warnings.push(match result.total {
-            Some(total) => format!(
-                "partial results: {returned} of {total} returned; continue with --offset {next} or raise --limit"
-            ),
-            None => format!(
-                "partial results: {returned} returned and more remain; continue with --offset {next} or raise --limit"
-            ),
+            Some(total) => {
+                format!("partial results: {returned} of {total} returned; {continuation}")
+            }
+            None => format!("partial results: {returned} returned and more remain; {continuation}"),
         });
     }
     let meta = Meta {
@@ -2734,7 +2787,7 @@ mod tests {
     #[test]
     fn pages_are_capped_by_the_tighter_document_and_byte_limits() {
         let page = |limit, response_bytes_limit| PageArgs {
-            limit,
+            limit: Some(limit),
             offset: 5,
             response_bytes_limit,
         };
@@ -2754,6 +2807,7 @@ mod tests {
             PageLimits {
                 documents: Some("maxDocumentsPerQuery"),
                 bytes: Some("responseBytesLimit"),
+                can_raise_limit: false,
             }
         );
         let (request, limits) = page_request(&page(100, 0), &Settings::default(), cap);
@@ -2802,6 +2856,7 @@ mod tests {
         let both = PageLimits {
             documents: Some("maxDocumentsPerQuery"),
             bytes: Some("maxBytesPerQuery"),
+            can_raise_limit: true,
         };
         let (_, meta) = paged(
             request,
@@ -2822,9 +2877,33 @@ mod tests {
             ["maxDocumentsPerQuery", "maxBytesPerQuery"]
         );
         assert_eq!(meta.warnings.len(), 2, "{:?}", meta.warnings);
+        // A cap cut this page, so a larger --limit would not help.
         assert_eq!(
             meta.warnings[1],
-            "partial results: 2 of 9 returned; continue with --offset 6 or raise --limit"
+            "partial results: 2 of 9 returned; continue with --offset 6"
+        );
+        let uncut = || Page {
+            documents: vec![json!({}), json!({})],
+            has_more: true,
+            truncated: false,
+            total: None,
+            warnings: Vec::new(),
+        };
+        let below_cap = PageLimits {
+            can_raise_limit: true,
+            ..PageLimits::default()
+        };
+        let (_, meta) = paged(request, below_cap, uncut());
+        assert_eq!(
+            meta.warnings,
+            [
+                "partial results: 2 returned and more remain; continue with --offset 6 or raise --limit"
+            ]
+        );
+        let (_, meta) = paged(request, PageLimits::default(), uncut());
+        assert_eq!(
+            meta.warnings,
+            ["partial results: 2 returned and more remain; continue with --offset 6"]
         );
         // A byte limit that did not cut the page is not reported.
         let (_, meta) = paged(
@@ -2832,6 +2911,7 @@ mod tests {
             PageLimits {
                 documents: None,
                 bytes: Some("responseBytesLimit"),
+                can_raise_limit: true,
             },
             Page::default(),
         );

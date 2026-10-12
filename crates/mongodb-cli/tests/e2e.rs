@@ -449,7 +449,8 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
     assert_eq!(inserted["data"]["insertedCount"], 150);
 
     let small = r#"{"pad": 0}"#;
-    let capped = session.ok(
+    // A --limit above the page cap is refused rather than silently cut short.
+    let refused = session.run(
         "read-only",
         &[
             "documents",
@@ -462,9 +463,32 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
             small,
         ],
     );
-    assert_eq!(capped["data"].as_array().unwrap().len(), 100);
-    assert_eq!(capped["meta"]["limit"], 100);
-    assert_eq!(capped["meta"]["nextOffset"], 100);
+    assert_eq!(refused.status.code(), Some(2));
+    // The cap still shortens the default page when a connection sets it below 10.
+    let output = session
+        .command("read-only")
+        .env("MONGODB_CLI_MAX_DOCUMENTS_PER_QUERY", "5")
+        .args([
+            "--output",
+            "json",
+            "documents",
+            "find",
+            db,
+            "big",
+            "--projection",
+            small,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let capped: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(capped["data"].as_array().unwrap().len(), 5);
+    assert_eq!(capped["meta"]["limit"], 5);
+    assert_eq!(capped["meta"]["nextOffset"], 5);
     assert_eq!(capped["meta"]["total"], 150);
     assert_eq!(
         capped["meta"]["appliedLimits"],

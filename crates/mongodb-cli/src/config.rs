@@ -603,9 +603,30 @@ impl ConfigFile {
         Ok(())
     }
 
+    /// The error for a profile that is not configured, listing the ones that are.
+    pub fn unknown_profile(&self, name: &str) -> String {
+        if self.profiles.is_empty() {
+            return format!(
+                "profile '{name}' does not exist and no profiles are configured; run `mongodb-cli init`"
+            );
+        }
+        let available: Vec<String> = self
+            .profiles
+            .iter()
+            .map(|(profile, settings)| match &settings.description {
+                Some(description) => format!("{profile} ({description})"),
+                None => profile.clone(),
+            })
+            .collect();
+        format!(
+            "profile '{name}' does not exist; available: {}",
+            available.join(", ")
+        )
+    }
+
     pub fn use_profile(&mut self, name: &str) -> Result<(), String> {
         if !self.profiles.contains_key(name) {
-            return Err(format!("profile '{name}' does not exist"));
+            return Err(self.unknown_profile(name));
         }
         self.current_profile = Some(name.to_owned());
         Ok(())
@@ -732,7 +753,7 @@ impl ConfigFile {
         let profile = self
             .profiles
             .get(name)
-            .ok_or_else(|| format!("profile '{name}' does not exist"))?;
+            .ok_or_else(|| self.unknown_profile(name))?;
         Ok(ResolvedTarget {
             profile: Some(name.to_owned()),
             access: profile.access,

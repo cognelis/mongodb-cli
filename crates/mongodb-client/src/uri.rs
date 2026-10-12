@@ -53,6 +53,11 @@ impl fmt::Debug for ConnectionUri {
     }
 }
 
+/// The database a connection string names in its path, if any; parsing needs no network.
+pub fn default_database(uri: &str) -> Option<String> {
+    ConnectionString::parse(uri).ok()?.default_database
+}
+
 /// Remove user information and secret-bearing options from a connection string.
 pub fn redact(uri: &str) -> String {
     let Some((scheme, rest)) = uri.split_once("://") else {
