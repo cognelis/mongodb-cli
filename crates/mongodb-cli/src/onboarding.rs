@@ -184,7 +184,7 @@ pub async fn run_init(
     )?;
     let mut report = DoctorReport::new(env!("CARGO_PKG_VERSION"));
     report.configuration_passed();
-    report.credentials_passed();
+    report.credentials_passed("the connection string you entered");
     report.server_passed(doctor::server_message(&verification.server));
     report.authentication_passed(doctor::identity(&verification.status));
     let warnings = if access == Access::ReadOnly {
@@ -340,6 +340,31 @@ pub fn confirm_loosening(name: &str, loosened: &[String]) -> Result<(), AppError
         Ok(())
     } else {
         Err(AppError::validation("profile change cancelled"))
+    }
+}
+
+/// Only a person in an interactive terminal may move credentials into a plain-text file.
+pub fn confirm_plaintext_store() -> Result<(), AppError> {
+    if !interactive_terminal() {
+        return Err(AppError::new(
+            ErrorCode::Forbidden,
+            "keeping credentials in a plain-text file requires confirmation in an interactive terminal",
+        )
+        .with_hint(
+            "ask the user to run `mongodb-cli config set credential-store file` in their own terminal",
+        ));
+    }
+    let confirmed = prompt_io(
+        cliclack::confirm(
+            "Keep connection strings and Atlas credentials in a plain-text file only you can read?",
+        )
+        .initial_value(false)
+        .interact(),
+    )?;
+    if confirmed {
+        Ok(())
+    } else {
+        Err(AppError::validation("credential store change cancelled"))
     }
 }
 
@@ -501,7 +526,8 @@ pub(crate) async fn verify(uri: &ConnectionUri, timeout: u64) -> Result<Verifica
     })
 }
 
-/// Store a connection string and the matching config change, or restore both.
+/// Store a connection string and the matching config change, or restore both. A connection string
+/// without secrets is kept in the config file instead, so reading it never prompts.
 pub(crate) fn persist_credential(
     config: &mut ConfigFile,
     config_path: &Path,
@@ -511,10 +537,39 @@ pub(crate) fn persist_credential(
     update: impl FnOnce(&mut ConfigFile) -> Result<(), String>,
 ) -> Result<(), AppError> {
     let previous_config = config.clone();
-    let previous_secret = store.get(profile).map_err(AppError::config)?;
+    let secret_free = crate::config::is_secret_free(secret.expose_secret());
+    // The previous secret is only needed to roll back a store write.
+    let previous_secret = if secret_free {
+        None
+    } else {
+        store.get(profile).map_err(AppError::config)?
+    };
     if let Err(error) = update(config) {
         *config = previous_config;
         return Err(AppError::validation(error));
+    }
+    let Some(entry) = config.profiles.get_mut(profile) else {
+        *config = previous_config;
+        return Err(AppError::validation(format!(
+            "profile '{profile}' does not exist"
+        )));
+    };
+    entry.connection_in_config = secret_free;
+    if secret_free {
+        entry.target = Some(secret.expose_secret().to_owned());
+        if let Err(error) = config.save(config_path) {
+            *config = previous_config;
+            return Err(AppError::config(error));
+        }
+        let held_secret = previous_config
+            .profiles
+            .get(profile)
+            .is_some_and(|previous| previous.target.is_some() && !previous.connection_in_config);
+        if held_secret {
+            // Best effort: the config file now takes precedence, so a stale secret is never read.
+            let _ = store.delete(profile);
+        }
+        return Ok(());
     }
     if let Err(error) = store.set(profile, secret.expose_secret()) {
         *config = previous_config;

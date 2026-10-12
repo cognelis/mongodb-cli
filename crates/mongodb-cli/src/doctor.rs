@@ -78,11 +78,12 @@ impl DoctorReport {
         self.skip_from(CREDENTIALS, "not checked because configuration failed");
     }
 
-    pub fn credentials_passed(&mut self) {
+    /// `source` names where the connection string came from, such as the credential store.
+    pub fn credentials_passed(&mut self, source: &str) {
         self.set(
             CREDENTIALS,
             DoctorStatus::Pass,
-            "a connection string is available",
+            format!("a connection string is available from {source}"),
         );
     }
 

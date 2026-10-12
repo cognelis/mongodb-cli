@@ -252,8 +252,14 @@ pub enum ConfigCommand {
     Show,
     /// Change a configuration setting.
     ///
-    /// `atlas-tools enabled` shows the atlas, local, and knowledge command groups; MONGODB_CLI_ATLAS_TOOLS overrides it.
-    Set { key: ConfigKey, value: Toggle },
+    /// `atlas-tools enabled` shows the atlas, local, and knowledge command groups; MONGODB_CLI_ATLAS_TOOLS overrides it. `credential-store keychain|security|file` chooses where connection strings and Atlas credentials are kept; MONGODB_CLI_CREDENTIAL_STORE overrides it.
+    Set {
+        key: ConfigKey,
+        value: ConfigValue,
+        /// Move stored credentials to the new store.
+        #[arg(long)]
+        migrate: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
@@ -261,13 +267,37 @@ pub enum ConfigCommand {
 pub enum ConfigKey {
     /// The atlas, local, and knowledge command groups.
     AtlasTools,
+    /// Where connection strings and Atlas credentials are kept.
+    CredentialStore,
 }
 
+/// A `config set` value; each key accepts its own values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
-pub enum Toggle {
+pub enum ConfigValue {
+    /// atlas-tools: show the command groups.
     Enabled,
+    /// atlas-tools: hide the command groups.
     Disabled,
+    /// credential-store: the operating-system keyring, approved per CLI build (default).
+    Keychain,
+    /// credential-store: macOS /usr/bin/security; approvals survive CLI upgrades.
+    Security,
+    /// credential-store: a file only you can read; never prompts, but holds secrets in plain text.
+    File,
+}
+
+/// Where connection strings and Atlas credentials are kept.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum CredentialBackend {
+    /// The operating-system keyring, approved per CLI build.
+    #[default]
+    Keychain,
+    /// macOS `/usr/bin/security`; the same login keychain items, approved once for that tool.
+    Security,
+    /// A file beside the config file, readable only by its owner.
+    File,
 }
 
 #[derive(Clone, Debug, Subcommand)]

@@ -21,8 +21,8 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 
 use crate::args::{Access, Cli, DeploymentsCommand, LocalCommand};
-use crate::config::{ConfigFile, SystemKeyring, validate_profile_name};
-use crate::dispatch::{AppError, DispatchResult, config_path};
+use crate::config::{ConfigFile, validate_profile_name};
+use crate::dispatch::{AppError, DispatchResult, config_path, credential_store_for};
 use crate::onboarding::{persist_credential, verify};
 use crate::output::Meta;
 
@@ -201,10 +201,11 @@ async fn connect(
     };
     let (secret, uri) = bounded(Duration::from_secs(cli.timeout), connected).await??;
     let target = uri.display().to_owned();
+    let store = credential_store_for(&config, &path)?;
     persist_credential(
         &mut config,
         &path,
-        &SystemKeyring,
+        &store,
         &profile,
         &secret,
         |config| match new_access {

@@ -1326,9 +1326,11 @@ async fn atlas_checks(cli: &Cli, report: &mut DispatchResult) -> Vec<Value> {
             .map(|name| doctor::check(name, DoctorStatus::Skipped, message))
             .collect()
     };
-    let Ok(config) = crate::dispatch::config_path()
-        .and_then(|path| ConfigFile::load(&path).map_err(AppError::config))
-    else {
+    let Ok((config, path)) = crate::dispatch::config_path().and_then(|path| {
+        ConfigFile::load(&path)
+            .map(|config| (config, path))
+            .map_err(AppError::config)
+    }) else {
         return skipped("not checked because configuration failed");
     };
     let mut target = match resolve_target(&config, cli.profile.as_deref()) {
@@ -1370,7 +1372,9 @@ async fn atlas_checks(cli: &Cli, report: &mut DispatchResult) -> Vec<Value> {
     let atlas_only = mongodb_unconfigured(&config, cli.profile.as_deref());
     report.meta.access.get_or_insert(target.access);
     report.meta.warnings.extend(target.warnings.iter().cloned());
-    let client = match target.client(&crate::config::SystemKeyring, cli.timeout) {
+    let client = match crate::dispatch::credential_store_for(&config, &path)
+        .and_then(|store| target.client(&store, cli.timeout))
+    {
         Ok(client) => client,
         Err(_) => {
             report.failure_code.get_or_insert(ErrorCode::Config);

@@ -11,8 +11,9 @@ use serde_json::{Map, Value, json};
 
 use crate::args::*;
 use crate::config::{
-    ConfigFile, CredentialStore, ProfileChanges, ProfileConfig, Settings, SystemKeyring, URI_ENV,
-    default_config_path,
+    CREDENTIAL_STORE_ENV, ConfigFile, CredentialStore, ProfileChanges, ProfileConfig, Settings,
+    URI_ENV, credential_store_label, credential_store_override, default_config_path,
+    open_credential_store,
 };
 use crate::doctor::{self, DoctorReport};
 use crate::output::Meta;
@@ -100,13 +101,11 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
             ));
         }
         Command::Init => {
-            return crate::onboarding::run_init(
-                cli.profile.as_deref(),
-                cli.timeout,
-                &config_path()?,
-                &SystemKeyring,
-            )
-            .await;
+            let path = config_path()?;
+            // Setup repairs a malformed config; until then the store follows the environment default.
+            let store = credential_store_for(&ConfigFile::load(&path).unwrap_or_default(), &path)?;
+            return crate::onboarding::run_init(cli.profile.as_deref(), cli.timeout, &path, &store)
+                .await;
         }
         Command::Skills {
             command: SkillsCommand::Install { target },
@@ -129,7 +128,7 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
     }
     let path = config_path()?;
     let mut config = ConfigFile::load(&path).map_err(AppError::config)?;
-    let store = SystemKeyring;
+    let store = credential_store_for(&config, &path)?;
     match &cli.command {
         Command::Config {
             command: ConfigCommand::Show,
@@ -171,9 +170,23 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
                 ConfigCommand::Set {
                     key: ConfigKey::AtlasTools,
                     value,
+                    migrate,
                 },
         } => {
-            config.atlas_tools = *value == Toggle::Enabled;
+            if *migrate {
+                return Err(AppError::validation(
+                    "--migrate applies only to credential-store",
+                ));
+            }
+            config.atlas_tools = match value {
+                ConfigValue::Enabled => true,
+                ConfigValue::Disabled => false,
+                _ => {
+                    return Err(AppError::validation(
+                        "atlas-tools accepts enabled or disabled",
+                    ));
+                }
+            };
             config.save(&path).map_err(AppError::config)?;
             let mut result = local(
                 "config.set",
@@ -187,6 +200,14 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
             }
             Ok(result)
         }
+        Command::Config {
+            command:
+                ConfigCommand::Set {
+                    key: ConfigKey::CredentialStore,
+                    value,
+                    migrate,
+                },
+        } => set_credential_store(*value, *migrate, &mut config, &path),
         Command::Auth {
             command:
                 AuthCommand::Login {
@@ -375,14 +396,18 @@ fn read_only_refusal(command: &str, profile: Option<&str>) -> AppError {
 async fn run_doctor(cli: &Cli) -> DispatchResult {
     let mut report = DoctorReport::new(env!("CARGO_PKG_VERSION"));
     let mut meta = Meta::default();
-    let config =
-        match config_path().and_then(|path| ConfigFile::load(&path).map_err(AppError::config)) {
-            Ok(config) => config,
-            Err(_) => {
-                report.configuration_failed();
-                return doctor_result(report, meta, Some(ErrorCode::Config));
-            }
-        };
+    let loaded = config_path().and_then(|path| {
+        ConfigFile::load(&path)
+            .map(|config| (config, path))
+            .map_err(AppError::config)
+    });
+    let (config, path) = match loaded {
+        Ok(loaded) => loaded,
+        Err(_) => {
+            report.configuration_failed();
+            return doctor_result(report, meta, Some(ErrorCode::Config));
+        }
+    };
     let target = match config.resolve_target(cli.profile.as_deref()) {
         Ok(target) => target,
         Err(_) => {
@@ -395,14 +420,32 @@ async fn run_doctor(cli: &Cli) -> DispatchResult {
     meta.access = Some(target.access);
     meta.warnings.clone_from(&target.warnings);
     let access = target.access;
-    let connection = match config.resolve_credentials(target, &SystemKeyring) {
+    let source = match target
+        .profile
+        .as_deref()
+        .and_then(|name| config.profiles.get(name))
+    {
+        Some(profile) if profile.connection_in_config => {
+            "the config file, as it holds no secret".to_owned()
+        }
+        Some(_) => config
+            .credential_backend()
+            .map_or("the credential store", credential_store_label)
+            .to_owned(),
+        None => URI_ENV.to_owned(),
+    };
+    let connection = match credential_store_for(&config, &path).and_then(|store| {
+        config
+            .resolve_credentials(target, &store)
+            .map_err(AppError::config)
+    }) {
         Ok(connection) => connection,
         Err(_) => {
             report.credentials_failed();
             return doctor_result(report, meta, Some(ErrorCode::Config));
         }
     };
-    report.credentials_passed();
+    report.credentials_passed(&source);
 
     let started = Instant::now();
     let client = match MongoClient::connect(&connection.uri, Duration::from_secs(cli.timeout)).await
@@ -645,16 +688,113 @@ fn logout(
             "profile '{profile}' does not exist"
         )));
     }
-    store.delete(&profile).map_err(AppError::config)?;
+    // A connection string kept in the config file has nothing in the store to remove.
+    if !config.profiles[&profile].connection_in_config {
+        store.delete(&profile).map_err(AppError::config)?;
+    }
     // Without a stored connection string the profile has no target.
     if let Some(saved) = config.profiles.get_mut(&profile) {
         saved.target = None;
+        saved.connection_in_config = false;
     }
     config.save(path).map_err(AppError::config)?;
     Ok(local(
         "auth.logout",
         json!({"profile": profile, "removed": true}),
     ))
+}
+
+/// The credential store this invocation reads and writes.
+pub(crate) fn credential_store_for(
+    config: &ConfigFile,
+    path: &Path,
+) -> Result<Box<dyn CredentialStore>, AppError> {
+    let backend = config.credential_backend().map_err(AppError::config)?;
+    open_credential_store(backend, path).map_err(AppError::config)
+}
+
+/// Choose where credentials are kept and, with `migrate`, move the stored ones there.
+fn set_credential_store(
+    value: ConfigValue,
+    migrate: bool,
+    config: &mut ConfigFile,
+    path: &Path,
+) -> Result<DispatchResult, AppError> {
+    let backend = match value {
+        ConfigValue::Keychain => CredentialBackend::Keychain,
+        ConfigValue::Security => CredentialBackend::Security,
+        ConfigValue::File => CredentialBackend::File,
+        _ => {
+            return Err(AppError::validation(
+                "credential-store accepts keychain, security, or file",
+            ));
+        }
+    };
+    let previous = config.credential_store.unwrap_or_default();
+    let next_store = open_credential_store(backend, path).map_err(AppError::config)?;
+    if backend == CredentialBackend::File && previous != CredentialBackend::File {
+        crate::onboarding::confirm_plaintext_store()?;
+    }
+    // The keychain and `security` read and write the same login keychain entries.
+    let keychain = |backend| {
+        matches!(
+            backend,
+            CredentialBackend::Keychain | CredentialBackend::Security
+        )
+    };
+    let same_entries = backend == previous || (keychain(backend) && keychain(previous));
+    let mut warnings = Vec::new();
+    let mut migration = None;
+    if migrate {
+        let previous_store = open_credential_store(previous, path).map_err(AppError::config)?;
+        let moved = config
+            .migrate_credentials(&previous_store, &next_store, same_entries)
+            .map_err(AppError::config)?;
+        migration = Some((moved, previous_store));
+    } else if !same_entries {
+        let stored = config
+            .profiles
+            .values()
+            .filter(|profile| {
+                (profile.target.is_some() && !profile.connection_in_config) || profile.atlas
+            })
+            .count();
+        if stored > 0 {
+            warnings.push(format!(
+                "{stored} profile(s) keep credentials in {}; run again with --migrate to move them, or run auth login again",
+                credential_store_label(previous)
+            ));
+        }
+    }
+    config.credential_store = Some(backend);
+    config.save(path).map_err(AppError::config)?;
+    let mut data = json!({"key": ConfigKey::CredentialStore, "value": value});
+    if let Some((moved, previous_store)) = migration {
+        // Only now that the config file points at the new store is the old copy removed.
+        for account in &moved.remove_from_previous {
+            if let Err(error) = previous_store.delete(account) {
+                warnings.push(format!(
+                    "could not remove '{account}' from {}: {error}",
+                    credential_store_label(previous)
+                ));
+            }
+        }
+        data["migration"] = serde_json::to_value(&moved).expect("migration counts serialize");
+    }
+    if backend == CredentialBackend::Security && previous == CredentialBackend::Keychain {
+        warnings.push(
+            "the first read of each existing entry asks once to allow /usr/bin/security; choose Always Allow"
+                .into(),
+        );
+    }
+    if credential_store_override().is_ok_and(|current| current.is_some_and(|env| env != backend)) {
+        warnings.push(format!(
+            "{CREDENTIAL_STORE_ENV} is set and takes precedence over this setting"
+        ));
+    }
+    let mut result = local("config.set", data);
+    result.meta.warnings = warnings;
+    Ok(result)
 }
 
 /// A remote operation with every input already parsed and validated.
@@ -1648,6 +1788,18 @@ fn paged(page: PageRequest, limits: PageLimits, result: Page) -> (Value, Meta) {
             "the page was capped at {} documents by maxDocumentsPerQuery",
             page.limit
         ));
+    }
+    // A short page is easy to mistake for the whole result, so say so even without the envelope.
+    if result.has_more {
+        let next = page.offset.saturating_add(returned);
+        warnings.push(match result.total {
+            Some(total) => format!(
+                "partial results: {returned} of {total} returned; continue with --offset {next} or raise --limit"
+            ),
+            None => format!(
+                "partial results: {returned} returned and more remain; continue with --offset {next} or raise --limit"
+            ),
+        });
     }
     let meta = Meta {
         limit: Some(page.limit),
@@ -2662,7 +2814,11 @@ mod tests {
             meta.applied_limits,
             ["maxDocumentsPerQuery", "maxBytesPerQuery"]
         );
-        assert_eq!(meta.warnings.len(), 1, "{:?}", meta.warnings);
+        assert_eq!(meta.warnings.len(), 2, "{:?}", meta.warnings);
+        assert_eq!(
+            meta.warnings[1],
+            "partial results: 2 of 9 returned; continue with --offset 6 or raise --limit"
+        );
         // A byte limit that did not cut the page is not reported.
         let (_, meta) = paged(
             request,

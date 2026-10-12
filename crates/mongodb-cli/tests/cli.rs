@@ -147,6 +147,31 @@ fn version_and_usage_errors_follow_the_output_contract() {
     let error = error_envelope(&output);
     assert_eq!(error["error"]["code"], "validation");
     assert!(error["error"]["hint"].as_str().unwrap().contains("--help"));
+
+    // A pipeline passed as a positional argument points at the flag it needs.
+    let output = cli(&config)
+        .args([
+            "--output",
+            "json",
+            "documents",
+            "aggregate",
+            "shop",
+            "orders",
+            r#"[{"$match":{}}]"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let error = error_envelope(&output);
+    let message = error["error"]["message"].as_str().unwrap();
+    assert!(message.starts_with("unexpected argument"), "{message}");
+    assert!(!message.contains("Usage:"), "{message}");
+    assert!(
+        error["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("--pipeline")
+    );
 }
 
 #[test]
@@ -667,6 +692,117 @@ fn profile_descriptions_are_stored_listed_and_cleared_without_a_terminal() {
     let output = run(&["profile", "update", "test", "--description", "two\nlines"]);
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(error_envelope(&output)["error"]["code"], "validation");
+}
+
+#[test]
+fn credential_store_choice_and_secret_free_connection_strings() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    let credentials = directory.path().join("credentials.toml");
+    let run = |arguments: &[&str], input: Option<&str>| {
+        let mut command = cli(&config);
+        command
+            .env("MONGODB_CLI_CREDENTIAL_STORE", "file")
+            .args(["--output", "json"])
+            .args(arguments);
+        if let Some(input) = input {
+            command.write_stdin(input);
+        }
+        command.output().unwrap()
+    };
+
+    // Keeping credentials in a plain-text file needs a person at a terminal.
+    let output = cli(&config)
+        .args([
+            "--output",
+            "json",
+            "config",
+            "set",
+            "credential-store",
+            "file",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(error_envelope(&output)["error"]["code"], "forbidden");
+    assert!(!config.exists());
+
+    // A connection string without secrets lives in the config file; no store is created.
+    assert!(run(&["profile", "add", "local"], None).status.success());
+    let output = run(
+        &[
+            "auth",
+            "login",
+            "--profile",
+            "local",
+            "--uri-stdin",
+            "--no-verify",
+        ],
+        Some("mongodb://127.0.0.1:9/\n"),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let shown = envelope(&run(&["profile", "show", "local"], None))["data"].clone();
+    assert_eq!(shown["connection_in_config"], true);
+    assert_eq!(shown["credentials"]["connectionString"], true);
+    assert!(!credentials.exists());
+
+    // A connection string with a password goes to the owner-only credentials file.
+    assert!(run(&["profile", "add", "prod"], None).status.success());
+    let output = run(
+        &[
+            "auth",
+            "login",
+            "--profile",
+            "prod",
+            "--uri-stdin",
+            "--no-verify",
+        ],
+        Some("mongodb://reader:secret@127.0.0.1:9/\n"),
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(&credentials)
+            .unwrap()
+            .contains("reader:secret")
+    );
+    assert!(!std::fs::read_to_string(&config).unwrap().contains("secret"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&credentials)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    // doctor names where each connection string came from, even when the server is unreachable.
+    for (profile, source) in [("local", "config file"), ("prod", "credentials file")] {
+        let output = run(&["--timeout", "1", "--profile", profile, "doctor"], None);
+        let checks = envelope(&output)["data"].clone();
+        let credentials_check = checks
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["name"] == "credentials")
+            .unwrap();
+        assert_eq!(credentials_check["status"], "pass");
+        assert!(
+            credentials_check["message"]
+                .as_str()
+                .unwrap()
+                .contains(source),
+            "{credentials_check}"
+        );
+    }
 }
 
 #[test]

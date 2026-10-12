@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
+use clap::ValueEnum;
 use directories::ProjectDirs;
 use mongodb_client::ConnectionUri;
+use mongodb_client::uri::redact;
 use serde::{Deserialize, Serialize};
 
-use crate::args::{Access, ServerSideJs};
+use crate::args::{Access, CredentialBackend, ServerSideJs};
 
 /// A connection string for automation; it never overrides an explicitly selected profile.
 pub const URI_ENV: &str = "MONGODB_URI";
@@ -16,6 +18,10 @@ pub const URI_ENV: &str = "MONGODB_URI";
 pub const ACCESS_ENV: &str = "MONGODB_CLI_ACCESS";
 /// `enabled` or `disabled`; overrides the config file's `atlas_tools` setting.
 pub const ATLAS_TOOLS_ENV: &str = "MONGODB_CLI_ATLAS_TOOLS";
+/// `keychain`, `security`, or `file`; overrides the config file's `credential_store` setting.
+pub const CREDENTIAL_STORE_ENV: &str = "MONGODB_CLI_CREDENTIAL_STORE";
+/// The keyring service that names every stored credential.
+const SERVICE: &str = "mongodb-cli";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProfileConfig {
@@ -27,6 +33,10 @@ pub struct ProfileConfig {
     /// The connection target without credentials, recorded when the connection string was stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// Whether `target` is the whole connection string. Such a string carries no secret, so it is
+    /// kept here instead of in the credential store, and reading it never prompts.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub connection_in_config: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_side_js: Option<ServerSideJs>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,6 +234,9 @@ pub struct ConfigFile {
     /// Whether the `atlas`, `local`, and `knowledge` command groups are enabled.
     #[serde(default)]
     pub atlas_tools: bool,
+    /// Where connection strings and Atlas credentials are kept; the keychain when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_store: Option<CredentialBackend>,
     #[serde(default)]
     pub profiles: BTreeMap<String, ProfileConfig>,
 }
@@ -234,11 +247,26 @@ pub trait CredentialStore {
     fn delete(&self, name: &str) -> Result<(), String>;
 }
 
+impl<T: CredentialStore + ?Sized> CredentialStore for Box<T> {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        (**self).get(name)
+    }
+
+    fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        (**self).set(name, value)
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        (**self).delete(name)
+    }
+}
+
+/// The operating-system keyring. On macOS each CLI build is approved separately.
 pub struct SystemKeyring;
 
 impl CredentialStore for SystemKeyring {
     fn get(&self, name: &str) -> Result<Option<String>, String> {
-        match keyring::Entry::new("mongodb-cli", name)
+        match keyring::Entry::new(SERVICE, name)
             .map_err(|error| error.to_string())?
             .get_password()
         {
@@ -249,19 +277,235 @@ impl CredentialStore for SystemKeyring {
     }
 
     fn set(&self, name: &str, value: &str) -> Result<(), String> {
-        keyring::Entry::new("mongodb-cli", name)
+        keyring::Entry::new(SERVICE, name)
             .map_err(|error| error.to_string())?
             .set_password(value)
             .map_err(|error| error.to_string())
     }
 
     fn delete(&self, name: &str) -> Result<(), String> {
-        let entry = keyring::Entry::new("mongodb-cli", name).map_err(|error| error.to_string())?;
+        let entry = keyring::Entry::new(SERVICE, name).map_err(|error| error.to_string())?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(error) => Err(error.to_string()),
         }
     }
+}
+
+/// macOS `/usr/bin/security`: the same login keychain entries as [`SystemKeyring`], approved once
+/// for that Apple-signed tool instead of for every CLI build.
+pub struct SecurityCli;
+
+/// The exit status `security` returns for an entry that does not exist.
+const SECURITY_NOT_FOUND: i32 = 44;
+
+impl SecurityCli {
+    fn run(arguments: &[&str], input: Option<&str>) -> Result<std::process::Output, String> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("/usr/bin/security")
+            .args(arguments)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("cannot run /usr/bin/security: {error}"))?;
+        let mut stdin = child.stdin.take().expect("stdin is piped");
+        if let Some(input) = input {
+            // A failed write surfaces as the command's own failure.
+            let _ = stdin.write_all(input.as_bytes());
+        }
+        drop(stdin);
+        child
+            .wait_with_output()
+            .map_err(|error| format!("cannot run /usr/bin/security: {error}"))
+    }
+
+    fn failure(action: &str, output: &std::process::Output) -> String {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let detail = if detail.is_empty() {
+            format!("exit status {:?}", output.status.code())
+        } else {
+            detail
+        };
+        format!("the macOS keychain could not {action} the credential: {detail}")
+    }
+}
+
+impl CredentialStore for SecurityCli {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        let output = Self::run(
+            &["find-generic-password", "-s", SERVICE, "-a", name, "-w"],
+            None,
+        )?;
+        match output.status.code() {
+            Some(0) => {
+                let value = String::from_utf8(output.stdout)
+                    .map_err(|_| "the stored credential is not valid UTF-8".to_owned())?;
+                let value = value.strip_suffix('\n').unwrap_or(&value);
+                Ok((!value.is_empty()).then(|| value.to_owned()))
+            }
+            Some(SECURITY_NOT_FOUND) => Ok(None),
+            _ => Err(Self::failure("read", &output)),
+        }
+    }
+
+    fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        if value.contains(['\n', '\r']) {
+            return Err("credentials must not contain line breaks".into());
+        }
+        // `-w` without a value reads the secret twice from stdin, keeping it out of the process list.
+        let output = Self::run(
+            &[
+                "add-generic-password",
+                "-U",
+                "-s",
+                SERVICE,
+                "-a",
+                name,
+                "-w",
+            ],
+            Some(&format!("{value}\n{value}\n")),
+        )?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(Self::failure("store", &output))
+        }
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        let output = Self::run(
+            &["delete-generic-password", "-s", SERVICE, "-a", name],
+            None,
+        )?;
+        match output.status.code() {
+            Some(0 | SECURITY_NOT_FOUND) => Ok(()),
+            _ => Err(Self::failure("remove", &output)),
+        }
+    }
+}
+
+/// Credentials in `credentials.toml` beside the config file, readable only by its owner. Nothing
+/// ever prompts, but the values are stored in plain text.
+pub struct FileStore {
+    path: PathBuf,
+}
+
+impl FileStore {
+    pub fn beside(config_path: &Path) -> Self {
+        Self {
+            path: config_path.with_file_name("credentials.toml"),
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn read(&self) -> Result<BTreeMap<String, String>, String> {
+        match fs::read_to_string(&self.path) {
+            Ok(text) => toml::from_str(&text).map_err(|error| {
+                format!("invalid credentials file {}: {error}", self.path.display())
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(error) => Err(format!("cannot read {}: {error}", self.path.display())),
+        }
+    }
+
+    fn write(&self, credentials: &BTreeMap<String, String>) -> Result<(), String> {
+        use std::io::Write;
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let text = toml::to_string(credentials).map_err(|error| error.to_string())?;
+        let temporary = self
+            .path
+            .with_extension(format!("tmp-{}", std::process::id()));
+        let _ = fs::remove_file(&temporary);
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let written = options
+            .open(&temporary)
+            .and_then(|mut file| file.write_all(text.as_bytes()))
+            .and_then(|()| fs::rename(&temporary, &self.path));
+        written.map_err(|error| {
+            let _ = fs::remove_file(&temporary);
+            format!("cannot write {}: {error}", self.path.display())
+        })
+    }
+}
+
+impl CredentialStore for FileStore {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        Ok(self.read()?.remove(name))
+    }
+
+    fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        let mut credentials = self.read()?;
+        credentials.insert(name.to_owned(), value.to_owned());
+        self.write(&credentials)
+    }
+
+    fn delete(&self, name: &str) -> Result<(), String> {
+        let mut credentials = self.read()?;
+        if credentials.remove(name).is_some() {
+            self.write(&credentials)?;
+        }
+        Ok(())
+    }
+}
+
+/// `MONGODB_CLI_CREDENTIAL_STORE`, if set; it takes precedence over the config file.
+pub fn credential_store_override() -> Result<Option<CredentialBackend>, String> {
+    parse_credential_store(
+        std::env::var(CREDENTIAL_STORE_ENV)
+            .ok()
+            .filter(|value| !value.is_empty())
+            .as_deref(),
+    )
+}
+
+fn parse_credential_store(value: Option<&str>) -> Result<Option<CredentialBackend>, String> {
+    value
+        .map(|value| {
+            CredentialBackend::from_str(value, true).map_err(|_| {
+                format!("{CREDENTIAL_STORE_ENV} must be keychain, security, or file, not '{value}'")
+            })
+        })
+        .transpose()
+}
+
+/// Open a credential store; `security` exists only on macOS.
+pub fn open_credential_store(
+    backend: CredentialBackend,
+    config_path: &Path,
+) -> Result<Box<dyn CredentialStore>, String> {
+    match backend {
+        CredentialBackend::Keychain => Ok(Box::new(SystemKeyring)),
+        CredentialBackend::Security if cfg!(target_os = "macos") => Ok(Box::new(SecurityCli)),
+        CredentialBackend::Security => {
+            Err("the security credential store is available only on macOS".into())
+        }
+        CredentialBackend::File => Ok(Box::new(FileStore::beside(config_path))),
+    }
+}
+
+/// Where a backend keeps credentials, as shown to people.
+pub fn credential_store_label(backend: CredentialBackend) -> &'static str {
+    match backend {
+        CredentialBackend::Keychain => "the operating-system keychain",
+        CredentialBackend::Security => "the macOS keychain through /usr/bin/security",
+        CredentialBackend::File => "the credentials file",
+    }
+}
+
+/// Whether a connection string has no user information or secret-bearing options, so it can live
+/// in the config file without a credential store.
+pub fn is_secret_free(uri: &str) -> bool {
+    redact(uri) == uri
 }
 
 /// The selected environment and its access mode, resolved without reading credentials.
@@ -390,6 +634,13 @@ impl ConfigFile {
         Ok(atlas_tools_override()?.unwrap_or(self.atlas_tools))
     }
 
+    /// `MONGODB_CLI_CREDENTIAL_STORE`, then the config file, then the keychain.
+    pub fn credential_backend(&self) -> Result<CredentialBackend, String> {
+        Ok(credential_store_override()?
+            .or(self.credential_store)
+            .unwrap_or_default())
+    }
+
     /// Select the connection: `--profile`, then `MONGODB_URI`, then the default profile.
     pub fn resolve_target(&self, selected_profile: Option<&str>) -> Result<ResolvedTarget, String> {
         let uri = std::env::var(URI_ENV)
@@ -413,14 +664,23 @@ impl ConfigFile {
                     .profile
                     .as_deref()
                     .expect("profile targets always carry a profile name");
-                let stored = store
-                    .get(name)?
-                    .filter(|value| !value.is_empty())
-                    .ok_or_else(|| {
-                        format!(
-                            "profile '{name}' has no connection string; run `mongodb-cli --profile {name} auth login`"
-                        )
-                    })?;
+                let in_config = self
+                    .profiles
+                    .get(name)
+                    .filter(|profile| profile.connection_in_config)
+                    .and_then(|profile| profile.target.clone());
+                // A connection string without secrets lives in the config file; the store is not read.
+                let stored = match in_config {
+                    Some(uri) => uri,
+                    None => store
+                        .get(name)?
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| {
+                            format!(
+                                "profile '{name}' has no connection string; run `mongodb-cli --profile {name} auth login`"
+                            )
+                        })?,
+                };
                 ConnectionUri::parse(&stored).map_err(|error| {
                     format!("profile '{name}' has an unusable stored connection string ({error}); run auth login again")
                 })?
@@ -550,6 +810,83 @@ pub(crate) fn parse_access(value: Option<&str>) -> Result<Access, String> {
         Some(other) => Err(format!(
             "{ACCESS_ENV} must be read-only or read-write, not '{other}'"
         )),
+    }
+}
+
+/// What moving credentials to another store did.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Migration {
+    /// Credentials copied to the new store.
+    pub moved: usize,
+    /// Connection strings without secrets, now kept in the config file.
+    pub kept_in_config: usize,
+    /// Credentials the profiles record but the previous store did not hold.
+    pub missing: usize,
+    /// Entries to remove from the previous store once the config file is saved.
+    #[serde(skip)]
+    pub remove_from_previous: Vec<String>,
+}
+
+impl ConfigFile {
+    /// Copy every profile's credentials from `from` to `to`, and move connection strings without
+    /// secrets into the config file. With `same_entries` (the keychain and `security` share entries)
+    /// only that move happens. Nothing is removed here: the caller saves the config file, then removes
+    /// [`Migration::remove_from_previous`], so a failure leaves the previous store intact.
+    pub fn migrate_credentials(
+        &mut self,
+        from: &dyn CredentialStore,
+        to: &dyn CredentialStore,
+        same_entries: bool,
+    ) -> Result<Migration, String> {
+        let mut migration = Migration::default();
+        let mut copies = Vec::new();
+        let mut into_config = Vec::new();
+        for (name, profile) in &self.profiles {
+            if profile.target.is_some() && !profile.connection_in_config {
+                match from.get(name)? {
+                    Some(uri) if is_secret_free(&uri) => into_config.push((name.clone(), uri)),
+                    Some(uri) if !same_entries => copies.push((name.clone(), uri)),
+                    Some(_) => {}
+                    None => migration.missing += 1,
+                }
+            }
+            if profile.atlas && !same_entries {
+                let account = atlas_account(name);
+                match from.get(&account)? {
+                    Some(value) => copies.push((account, value)),
+                    None => migration.missing += 1,
+                }
+            }
+        }
+        let mut written: Vec<&str> = Vec::new();
+        for (account, value) in &copies {
+            if let Err(error) = to.set(account, value) {
+                for account in &written {
+                    let _ = to.delete(account);
+                }
+                return Err(format!(
+                    "could not copy '{account}' to the new store, so nothing was moved: {error}"
+                ));
+            }
+            written.push(account);
+        }
+        for (name, uri) in &into_config {
+            let profile = self
+                .profiles
+                .get_mut(name)
+                .expect("collected from the profiles");
+            profile.target = Some(uri.clone());
+            profile.connection_in_config = true;
+        }
+        migration.moved = copies.len();
+        migration.kept_in_config = into_config.len();
+        migration.remove_from_previous = copies
+            .into_iter()
+            .map(|(account, _)| account)
+            .chain(into_config.into_iter().map(|(name, _)| name))
+            .collect();
+        Ok(migration)
     }
 }
 
@@ -823,6 +1160,161 @@ mod tests {
             parse_atlas_tools(Some("true"))
                 .unwrap_err()
                 .contains(ATLAS_TOOLS_ENV)
+        );
+    }
+
+    /// A store that refuses reads and writes, to prove a code path never touches credentials.
+    struct UntouchableStore;
+
+    impl CredentialStore for UntouchableStore {
+        fn get(&self, _: &str) -> Result<Option<String>, String> {
+            Err("the credential store must not be read".into())
+        }
+        fn set(&self, _: &str, _: &str) -> Result<(), String> {
+            Err("the credential store must not be written".into())
+        }
+        fn delete(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn connection_strings_without_secrets_skip_the_credential_store() {
+        assert!(is_secret_free(
+            "mongodb://localhost:27017/?directConnection=true"
+        ));
+        assert!(is_secret_free(
+            "mongodb+srv://cluster0.example.net/app?retryWrites=true"
+        ));
+        assert!(!is_secret_free(URI));
+        assert!(!is_secret_free(
+            "mongodb://db.example.com/?authMechanismProperties=AWS_SESSION_TOKEN:x"
+        ));
+
+        let mut config = ConfigFile::default();
+        config.add_profile("local", Access::ReadWrite).unwrap();
+        let local = config.profiles.get_mut("local").unwrap();
+        local.target = Some("mongodb://localhost:27017".into());
+        local.connection_in_config = true;
+        let connection = resolve(&config, Some("local"), None, None, &UntouchableStore).unwrap();
+        assert_eq!(connection.uri.display(), "mongodb://localhost:27017");
+    }
+
+    #[test]
+    fn file_store_keeps_credentials_readable_only_by_their_owner() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = FileStore::beside(&directory.path().join("config.toml"));
+        assert_eq!(store.get("prod").unwrap(), None);
+        store.set("prod", URI).unwrap();
+        store.set("prod/atlas", r#"{"clientId":"id"}"#).unwrap();
+        assert_eq!(store.get("prod").unwrap().as_deref(), Some(URI));
+        store.delete("prod").unwrap();
+        assert_eq!(store.get("prod").unwrap(), None);
+        assert!(store.get("prod/atlas").unwrap().is_some());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(store.path()).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn migration_copies_secrets_and_moves_secret_free_strings_into_the_config() {
+        let from = MemoryStore::default();
+        from.set("prod", URI).unwrap();
+        from.set("prod/atlas", r#"{"clientId":"id"}"#).unwrap();
+        from.set("local", "mongodb://localhost:27017").unwrap();
+        let mut config = ConfigFile::default();
+        for (name, target) in [
+            ("prod", "mongodb://db.example.com:27017/?replicaSet=rs0"),
+            ("local", "mongodb://localhost:27017"),
+            ("stale", "mongodb://gone.example.com"),
+        ] {
+            config.add_profile(name, Access::ReadOnly).unwrap();
+            config.profiles.get_mut(name).unwrap().target = Some(target.into());
+        }
+        config.profiles.get_mut("prod").unwrap().atlas = true;
+
+        let to = MemoryStore::default();
+        let migration = config.migrate_credentials(&from, &to, false).unwrap();
+        assert_eq!(
+            (migration.moved, migration.kept_in_config, migration.missing),
+            (2, 1, 1)
+        );
+        assert_eq!(to.get("prod").unwrap().as_deref(), Some(URI));
+        assert!(to.get("prod/atlas").unwrap().is_some());
+        assert_eq!(to.get("local").unwrap(), None);
+        assert!(config.profiles["local"].connection_in_config);
+        let mut removed = migration.remove_from_previous.clone();
+        removed.sort();
+        assert_eq!(removed, ["local", "prod", "prod/atlas"]);
+        // Nothing leaves the previous store until the caller has saved the config file.
+        assert!(from.get("prod").unwrap().is_some());
+
+        // The keychain and `security` share entries, so only secret-free strings move.
+        let mut config = ConfigFile::default();
+        config.add_profile("prod", Access::ReadOnly).unwrap();
+        config.profiles.get_mut("prod").unwrap().target = Some("target".into());
+        let untouched = MemoryStore::default();
+        let migration = config.migrate_credentials(&from, &untouched, true).unwrap();
+        assert_eq!((migration.moved, migration.kept_in_config), (0, 0));
+        assert_eq!(untouched.get("prod").unwrap(), None);
+    }
+
+    #[test]
+    fn a_failed_migration_writes_nothing_and_removes_nothing() {
+        struct FailsSecondWrite(MemoryStore, Mutex<usize>);
+        impl CredentialStore for FailsSecondWrite {
+            fn get(&self, name: &str) -> Result<Option<String>, String> {
+                self.0.get(name)
+            }
+            fn set(&self, name: &str, value: &str) -> Result<(), String> {
+                let mut writes = self.1.lock().unwrap();
+                *writes += 1;
+                if *writes == 2 {
+                    return Err("disk full".into());
+                }
+                self.0.set(name, value)
+            }
+            fn delete(&self, name: &str) -> Result<(), String> {
+                self.0.delete(name)
+            }
+        }
+        let from = MemoryStore::default();
+        from.set("a", URI).unwrap();
+        from.set("b", URI).unwrap();
+        let mut config = ConfigFile::default();
+        for name in ["a", "b"] {
+            config.add_profile(name, Access::ReadOnly).unwrap();
+            config.profiles.get_mut(name).unwrap().target = Some("target".into());
+        }
+        let to = FailsSecondWrite(MemoryStore::default(), Mutex::new(0));
+        let error = config.migrate_credentials(&from, &to, false).unwrap_err();
+        assert!(error.contains("nothing was moved"), "{error}");
+        assert!(to.0.0.lock().unwrap().is_empty());
+        assert!(from.get("a").unwrap().is_some() && from.get("b").unwrap().is_some());
+    }
+
+    #[test]
+    fn credential_store_settings_parse_and_default_to_the_keychain() {
+        assert_eq!(parse_credential_store(None), Ok(None));
+        assert_eq!(
+            parse_credential_store(Some("security")),
+            Ok(Some(CredentialBackend::Security))
+        );
+        assert_eq!(
+            parse_credential_store(Some("FILE")),
+            Ok(Some(CredentialBackend::File))
+        );
+        assert!(
+            parse_credential_store(Some("vault"))
+                .unwrap_err()
+                .contains(CREDENTIAL_STORE_ENV)
+        );
+        assert_eq!(
+            ConfigFile::default().credential_store.unwrap_or_default(),
+            CredentialBackend::Keychain
         );
     }
 }

@@ -24,16 +24,21 @@ async fn main() {
             let arguments: Vec<_> = std::env::args().collect();
             let format = requested_output_format(&arguments);
             let raw = arguments.iter().any(|argument| argument == "--raw");
+            let hint = json_argument_hint(&error);
             let failure = match gate::disabled_group_error(&error) {
                 Some(failure) => failure,
                 // Clap's rendering keeps multi-line usage errors and the help shown for a
                 // missing subcommand readable; the single-line text writer would escape them.
                 None if !json_mode(format, raw) => {
                     let _ = error.print();
+                    if let Some(hint) = hint {
+                        let _ = writeln!(io::stderr().lock(), "hint: {hint}");
+                    }
                     std::process::exit(exit_code(ErrorCode::Validation));
                 }
-                None => AppError::validation(error.to_string())
-                    .with_hint("Run `mongodb-cli --help` or the subcommand's `--help`"),
+                None => AppError::validation(concise_message(&error)).with_hint(
+                    hint.unwrap_or("Run `mongodb-cli --help` or the subcommand's `--help`"),
+                ),
             };
             emit_error(format, raw, &failure);
             std::process::exit(exit_code(failure.code));
@@ -79,6 +84,42 @@ async fn main() {
             emit_error(cli.output, cli.raw, &error);
             std::process::exit(exit_code(error.code));
         }
+    }
+}
+
+/// A stray positional argument that looks like JSON was meant for a flag such as `--pipeline`.
+fn json_argument_hint(error: &clap::Error) -> Option<&'static str> {
+    use clap::error::{ContextKind, ContextValue};
+    if error.kind() != ErrorKind::UnknownArgument {
+        return None;
+    }
+    let Some(ContextValue::String(argument)) = error.get(ContextKind::InvalidArg) else {
+        return None;
+    };
+    match argument.trim_start().chars().next() {
+        Some('[') => Some("pass a pipeline with --pipeline '<json>' or --file <path>"),
+        Some('{') => Some("pass JSON with its flag, such as --filter, --documents, or --update"),
+        _ => None,
+    }
+}
+
+/// Clap's first line and its tips, without the usage block that `--help` shows anyway.
+fn concise_message(error: &clap::Error) -> String {
+    if error.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
+        return "a subcommand is required".to_owned();
+    }
+    let text = error.to_string();
+    let mut lines = text.lines();
+    let first = lines.next().unwrap_or_default();
+    let first = first.strip_prefix("error: ").unwrap_or(first);
+    let tips: Vec<&str> = lines
+        .map(str::trim)
+        .filter(|line| line.starts_with("tip:"))
+        .collect();
+    if tips.is_empty() {
+        first.to_owned()
+    } else {
+        format!("{first}; {}", tips.join("; "))
     }
 }
 

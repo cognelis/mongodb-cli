@@ -67,7 +67,7 @@ export MONGODB_URI="...from a secret store..."
 mongodb-cli doctor --output json
 ```
 
-Scripts that intentionally persist profiles store only the access mode, safety settings, and a credential-free connection target in the operating-system config directory. Connection strings are verified before they are stored in the operating-system keyring.
+Scripts that intentionally persist profiles store only the access mode, safety settings, and a credential-free connection target in the operating-system config directory. Connection strings are verified before they are stored in the [credential store](#credential-store).
 
 ```sh
 mongodb-cli profile add test --access read-write --description "Shared test cluster"
@@ -80,7 +80,21 @@ mongodb-cli --profile prod doctor --output json
 
 Running `auth login` without `--uri-stdin` opens a masked prompt. Use `--no-verify` only for an intentional offline setup; the JSON result records a warning. There is intentionally no `--uri` flag, so connection strings never enter shell history or process listings. `config show` never includes credentials, and `config path` remains usable even if the config file is malformed. Set `MONGODB_CLI_CONFIG` to use another config file.
 
-Connections resolve in this order: `--profile`, `MONGODB_URI`, then the default profile. `MONGODB_URI` never overrides an explicitly selected profile; the JSON `meta.warnings` notes when it was ignored. `profile show <name>` selects the positional name first, then `--profile`, then the default profile, and reports the profile's stored fields plus `credentials.connectionString` and `credentials.atlas` booleans that say which secrets the keyring holds (never their values).
+Connections resolve in this order: `--profile`, `MONGODB_URI`, then the default profile. `MONGODB_URI` never overrides an explicitly selected profile; the JSON `meta.warnings` notes when it was ignored. `profile show <name>` selects the positional name first, then `--profile`, then the default profile, and reports the profile's stored fields plus `credentials.connectionString` and `credentials.atlas` booleans that say which credentials are stored (never their values).
+
+### Credential store
+
+Connection strings that carry a password or another secret, and Atlas credentials, live in a credential store. `config set credential-store <store>` chooses it, and `MONGODB_CLI_CREDENTIAL_STORE` overrides the setting.
+
+| Store | Where credentials live | Prompts |
+| --- | --- | --- |
+| `keychain` (default) | The operating-system keyring | macOS approves each CLI build, so approvals are asked again after an upgrade |
+| `security` | The same macOS login keychain entries, through `/usr/bin/security` | Choose Always Allow once per entry; upgrades do not ask again |
+| `file` | `credentials.toml` beside the config file, readable only by you | Never; the values are stored in plain text |
+
+`--migrate` moves existing credentials to the new store, for example `mongodb-cli config set credential-store security --migrate`. The keychain and `security` share entries, so switching between them moves nothing. Choosing `file` asks for confirmation in an interactive terminal, so a coding agent cannot move credentials into plain text.
+
+A connection string without user information or secret-bearing options, such as `mongodb://localhost:27017` or an Atlas Local deployment, is kept in the config file instead (`connection_in_config = true`), so reading it never touches a credential store. `doctor` reports where the connection string came from.
 
 ## Diagnose a connection
 
@@ -143,6 +157,7 @@ Filters, projections, sorts, updates, pipelines, and documents are Extended JSON
 - The profile's `max_documents_per_query` (default 100, `0` for no cap) lowers `--limit`; `meta.limit` reports the page size actually used.
 - A page stops before its documents reach the byte limit: the smaller positive value of `--response-bytes-limit` (default 1 MiB, the MongoDB MCP server's `responseBytesLimit` default) and the profile's `max_bytes_per_query` (default 16 MiB). When both are `0`, bytes are not limited. A per-command flag can only tighten a profile cap.
 - `meta.appliedLimits` names what shortened the page: `maxDocumentsPerQuery` when the cap lowered `--limit`, and `responseBytesLimit` or `maxBytesPerQuery` (whichever was in effect) when the page stopped at the byte limit. Matching lines are added to `meta.warnings`.
+- A page that ends before the results do also adds a `partial results` line to `meta.warnings`, with the returned count, the total when known, and the next `--offset`. `--raw` drops the envelope, so it writes warnings to stderr as `warning:` lines instead.
 - If the first document alone exceeds the byte limit, the command exits 7 with `response_too_large` instead of returning an empty page; raise `--response-bytes-limit` or narrow the projection.
 - `meta.total` is a best-effort count: a parallel count for finds, bounded by `query_count_max_time_ms` (default 10 seconds), and a parallel `$count` for aggregations, bounded by `aggregation_count_max_time_ms` (default 60 seconds); both are also bounded by `--timeout`. A failed count only adds a `total count unavailable` warning.
 - Aggregations with `$out` or `$merge` are not paged; they report what they wrote in `meta.writeTargets`.
@@ -250,6 +265,7 @@ Loosening a profile requires confirmation in an interactive terminal: `--access 
 | `MONGODB_ATLAS_CLIENT_ID`, `MONGODB_ATLAS_CLIENT_SECRET` | Atlas service-account credentials for automation; set both or neither |
 | `MONGODB_CLI_ATLAS_BASE_URL` | Atlas origin (default `https://cloud.mongodb.com/`) |
 | `MONGODB_CLI_ATLAS_TOOLS` | `enabled` or `disabled`; overrides the `atlas_tools` setting |
+| `MONGODB_CLI_CREDENTIAL_STORE` | `keychain`, `security`, or `file`; overrides the `credential_store` setting |
 | `MONGODB_CLI_KNOWLEDGE_BASE_URL` | Knowledge base API root (default `https://knowledge.mongodb.com/api/v1/`; must end with `/`) |
 | `MONGODB_CLI_VOYAGE_API_KEY` | Voyage AI key passed to new Atlas Local deployments for automated embeddings |
 | `DOCKER_HOST` | Docker endpoint for `local` (default `unix:///var/run/docker.sock`) |
@@ -284,7 +300,7 @@ mongodb-cli --profile atlas-admin doctor --output json
 mongodb-cli --profile atlas-admin --output json atlas projects list
 ```
 
-- Credentials are stored in the operating-system keyring under the account `<profile>/atlas` as `{"clientId", "clientSecret"}`; `auth logout --atlas` removes them, and `profile remove` deletes them with the profile. A profile can hold a connection string, Atlas credentials, or both; `config show` reports `"atlas": true` for profiles with stored Atlas credentials. Both values are secrets: they are never accepted as flags or printed. `auth login --atlas --no-verify` stores them without requesting a token.
+- Credentials are stored in the [credential store](#credential-store) under the account `<profile>/atlas` as `{"clientId", "clientSecret"}`; `auth logout --atlas` removes them, and `profile remove` deletes them with the profile. A profile can hold a connection string, Atlas credentials, or both; `config show` reports `"atlas": true` for profiles with stored Atlas credentials. Both values are secrets: they are never accepted as flags or printed. `auth login --atlas --no-verify` stores them without requesting a token.
 - For CI, set `MONGODB_ATLAS_CLIENT_ID` and `MONGODB_ATLAS_CLIENT_SECRET` (the official Atlas CLI names). Environment credentials are read-only unless `MONGODB_CLI_ACCESS=read-write` is also set.
 - Credentials resolve like connections: `--profile`, then the environment, then the default profile. An explicit `--profile` ignores the environment and says so in `meta.warnings`.
 - `MONGODB_CLI_ATLAS_BASE_URL` selects another Atlas origin; a plain-HTTP URL adds a warning.
@@ -392,11 +408,11 @@ The executable embeds nine Agent Skills and installs them for Codex and Claude C
 | `mongodb-cli-schema-design` | Schema patterns and anti-patterns, verified against real data |
 | `mongodb-cli-search-and-ai` | Atlas Search, Vector Search, Automated Embedding, and hybrid search |
 | `mongodb-cli-connection` | Driver connection pool and timeout settings |
-| `mongodb-cli-setup` | Profiles, Atlas credentials, and Atlas Local setup |
+| `mongodb-cli-setup` | Profiles, the credential store, Atlas credentials, and Atlas Local setup |
 | `mongodb-cli-atlas-stream-processing` | Atlas Stream Processing workspaces, connections, and processors |
 | `mongodb-cli-qe-size-estimation` | Queryable Encryption storage and memory estimates |
 
-The eight `mongodb-cli-*` skills are adapted from MongoDB's [agent-skills](https://github.com/mongodb/agent-skills) (commit c370a63, Apache-2.0) and modified to drive the mongodb-cli executable instead of MCP tools; each keeps an attribution line and `license: Apache-2.0`, and their reference material is otherwise kept as published. Every skill defers to the official MongoDB plugin skill when the MongoDB MCP server is the active integration and the user did not ask for mongodb-cli.
+The eight `mongodb-cli-*` skills are adapted from MongoDB's [agent-skills](https://github.com/mongodb/agent-skills) (commit c370a63, Apache-2.0) and modified to drive the mongodb-cli executable instead of MCP tools; each keeps an attribution line and `license: Apache-2.0`, and their reference material is otherwise kept as published. Every skill defers to the official MongoDB plugin skill when the MongoDB MCP server is configured and the user did not ask for mongodb-cli; otherwise the core skill handles ordinary MongoDB data questions too.
 
 ```sh
 # Install for both Codex and Claude Code (default)

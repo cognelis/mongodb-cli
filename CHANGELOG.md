@@ -5,6 +5,32 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Added
+
+- A choice of credential store: `config set credential-store keychain|security|file`,
+  or `MONGODB_CLI_CREDENTIAL_STORE`. `security` uses macOS `/usr/bin/security`, so
+  keychain approvals survive CLI upgrades. `file` keeps credentials in an owner-only
+  file and needs confirmation in an interactive terminal. `--migrate` moves existing
+  credentials to the new store.
+- Connection strings without secrets, such as local servers and Atlas Local
+  deployments, are kept in the config file and never touch a credential store.
+
+### Changed
+
+- A partial page adds a `meta.warnings` line with the next `--offset`, and `--raw`
+  output writes warnings to stderr instead of dropping them.
+- JSON usage errors carry clap's first line and tips instead of the whole usage
+  text, and a positional argument that looks like JSON points to `--pipeline` or
+  `--filter`.
+- `doctor` reports where the connection string came from.
+- The bundled skills trigger for MongoDB data questions unless the MongoDB MCP
+  server is configured, with descriptions short enough for agents' skill lists.
+  The core skill uses a production profile only when the request names production,
+  answers questions about a whole environment from each of its profiles, never
+  substitutes another environment's data for a refused command, runs `doctor` once
+  per profile in a session, and adds a quick reference of common commands and their
+  output shapes.
+
 ## [0.2.0] - 2026-10-12
 
 ### Added

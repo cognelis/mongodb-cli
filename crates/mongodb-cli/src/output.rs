@@ -124,7 +124,12 @@ fn write_success(
         return output.write_all(script.as_bytes());
     }
     if raw {
-        return write_json(output, &data);
+        write_json(output, &data)?;
+        // Raw output drops the envelope, so warnings such as partial results go to stderr.
+        for warning in &meta.warnings {
+            writeln!(diagnostics, "warning: {}", terminal::safe_text(warning))?;
+        }
+        return Ok(());
     }
     match format {
         OutputFormat::Json | OutputFormat::Auto => {
@@ -318,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn json_keeps_its_envelope_and_raw_keeps_only_data_without_diagnostics() {
+    fn json_keeps_its_envelope_and_raw_keeps_only_data_with_warnings_on_stderr() {
         for (format, raw) in [
             (OutputFormat::Json, false),
             (OutputFormat::Auto, false),
@@ -340,6 +345,11 @@ mod tests {
             let value: Value = serde_json::from_slice(&output).unwrap();
             if raw {
                 assert_eq!(value, data);
+                // Without the envelope, warnings such as partial results reach stderr.
+                assert_eq!(
+                    String::from_utf8(diagnostics).unwrap(),
+                    "warning: total count unavailable\n"
+                );
             } else {
                 assert_eq!(value["data"], data);
                 assert_eq!(value["schemaVersion"], "1");
@@ -347,8 +357,8 @@ mod tests {
                 assert_eq!(value["meta"]["access"], "read-only");
                 assert_eq!(value["meta"]["hasMore"], true);
                 assert_eq!(value["meta"]["nextOffset"], 10);
+                assert!(diagnostics.is_empty());
             }
-            assert!(diagnostics.is_empty());
         }
     }
 
