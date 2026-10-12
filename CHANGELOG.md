@@ -5,6 +5,8 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-12
+
 ### Fixed
 
 - `config set credential-store security --migrate` from the keychain reads each entry
