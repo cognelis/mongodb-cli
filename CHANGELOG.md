@@ -5,6 +5,12 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Fixed
+
+- `config set credential-store security --migrate` from the keychain reads each entry
+  through `/usr/bin/security`, so every entry asks for approval once instead of once
+  for this CLI build and again for `security`.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added

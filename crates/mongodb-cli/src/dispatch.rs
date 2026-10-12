@@ -746,7 +746,14 @@ fn set_credential_store(
     let mut warnings = Vec::new();
     let mut migration = None;
     if migrate {
-        let previous_store = open_credential_store(previous, path).map_err(AppError::config)?;
+        // Shared entries read through `security` ask once per entry for good, where the keychain
+        // would ask again for every CLI build; so a move to `security` reads and removes through it.
+        let source = if same_entries && backend == CredentialBackend::Security {
+            backend
+        } else {
+            previous
+        };
+        let previous_store = open_credential_store(source, path).map_err(AppError::config)?;
         let moved = config
             .migrate_credentials(&previous_store, &next_store, same_entries)
             .map_err(AppError::config)?;
