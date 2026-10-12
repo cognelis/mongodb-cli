@@ -5,6 +5,8 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-12
+
 ### Added
 
 - A choice of credential store: `config set credential-store keychain|security|file`,
