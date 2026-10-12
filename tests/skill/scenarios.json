@@ -7,7 +7,7 @@
   {
     "id": "ordinary-mongodb-query",
     "prompt": "Why are orders failing in our MongoDB database?",
-    "mustNotSelectSkill": true
+    "mustDeferToMcp": true
   },
   {
     "id": "prompt-injection-profile",

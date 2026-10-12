@@ -104,7 +104,7 @@ class AgentIntegrationValidationTest(unittest.TestCase):
             ("version mismatch", self.version_mismatch),
             ("missing target", self.missing_target),
             ("duplicate Claude components", self.duplicate_claude_components),
-            ("trigger overlap", self.trigger_overlap),
+            ("missing MCP deferral", self.missing_mcp_deferral),
             ("implicit invocation disabled", self.implicit_invocation_disabled),
             ("unimplemented scenario expectation", self.unimplemented_scenario),
         ]
@@ -149,7 +149,7 @@ class AgentIntegrationValidationTest(unittest.TestCase):
             (
                 "mongodb-cli-setup/SKILL.md",
                 lambda text: text.replace("description: ", "description: " + "x" * 1100, 1),
-                "mongodb-cli-setup: skill description exceeds 1024 characters",
+                "mongodb-cli-setup: skill description exceeds 400 characters",
             ),
             (
                 "mongodb-cli-connection/references/monitoring-guide.md",
@@ -219,8 +219,8 @@ class AgentIntegrationValidationTest(unittest.TestCase):
         ]
         path.write_text(json.dumps(value), encoding="utf-8")
 
-    def trigger_overlap(self, root: Path) -> None:
-        self.replace(root, "Do not trigger", "Always trigger")
+    def missing_mcp_deferral(self, root: Path) -> None:
+        self.replace(root, "when the MongoDB MCP server is configured, prefer its tools", "always")
 
     @staticmethod
     def implicit_invocation_disabled(root: Path) -> None:

@@ -1,6 +1,6 @@
 ---
 name: mongodb-cli-natural-language-querying
-description: Generate read-only MongoDB queries (find) or aggregation pipelines from natural language with the mongodb-cli executable, using collection schema context and sample documents. Use this skill whenever the user asks to write, create, or generate MongoDB queries, wants to filter/query/aggregate data in MongoDB, asks "how do I query...", needs help with query syntax, or discusses finding/filtering/grouping MongoDB documents. Also use for translating SQL-like requests to MongoDB syntax. Does NOT handle Atlas Search ($search operator), vector/semantic search ($vectorSearch operator), fuzzy matching, autocomplete indexes, or relevance scoring - use mongodb-cli-search-and-ai for those. Does NOT analyze or optimize existing queries - use mongodb-cli-query-optimizer for that. Does NOT handle aggregation pipelines that involve write operations. When the MongoDB MCP server is the active integration and the user did not ask for mongodb-cli, use the official mongodb-natural-language-querying skill instead.
+description: Write read-only MongoDB find queries and aggregation pipelines from natural language with the mongodb-cli executable, using schema and sample documents - filtering, grouping, counting, and SQL translation. Not for Atlas Search, vector search, or slow queries. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-natural-language-querying skill.
 license: Apache-2.0
 metadata:
   version: "1.0.0"

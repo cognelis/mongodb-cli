@@ -1,6 +1,6 @@
 ---
 name: mongodb-cli-setup
-description: Guide users through configuring the mongodb-cli executable for MongoDB and Atlas - named profiles whose connection strings live in the operating-system keyring, read-only or read-write access, Atlas service-account credentials, Atlas Local deployments in Docker, and the doctor check. Use this skill when a user has mongodb-cli installed but no working profile or credentials, or asks how to connect mongodb-cli to MongoDB or Atlas. When the user is configuring the MongoDB MCP server, or the MCP server is the active integration and the user did not ask for mongodb-cli, use the official mongodb-mcp-setup skill instead.
+description: Set up the mongodb-cli executable - named profiles and their descriptions, read-only or read-write access, the credential store (keychain, security, or file, including repeated keychain prompts), Atlas credentials, Atlas Local in Docker, and doctor. For configuring the MongoDB MCP server, or when it is configured and mongodb-cli was not requested, use the official mongodb-mcp-setup skill.
 license: Apache-2.0
 metadata:
   version: "1.0.0"
@@ -20,7 +20,7 @@ mongodb-cli requires credentials for the deployment it talks to. Users have thre
 
 1. **Connection String** (Option A): Direct connection to a specific cluster
    - Quick setup for single cluster
-   - Stored per named profile in the operating-system keyring, or provided as `MONGODB_URI` in CI and short-lived shells
+   - Stored per named profile in the credential store (Step 5.5), or provided as `MONGODB_URI` in CI and short-lived shells
 
 2. **Service Account Credentials** (Option B): MongoDB Atlas Admin API access
    - **Recommended for Atlas users** who also want Atlas administration (clusters, Performance Advisor, Stream Processing) from mongodb-cli
@@ -35,7 +35,7 @@ mongodb-cli requires credentials for the deployment it talks to. Users have thre
 
 This is an interactive step-by-step guide. The agent detects the user's environment and provides tailored instructions, but **never asks for or handles credentials** — users enter them in their own terminal at a masked prompt, or pipe them from a secret store, in Step 5. Make this clear to the user whenever credentials come up in Steps 3a and 3b.
 
-No agent-specific configuration is needed: profiles live in the mongodb-cli config file and secrets in the operating-system keyring, so every terminal and agent on the machine sees the same setup. Environment variables matter only for CI and short-lived shells; note that an agent app launched from Finder, Launchpad, or the Windows Start menu does not inherit shell environment variables.
+No agent-specific configuration is needed: profiles live in the mongodb-cli config file and secrets in its credential store, so every terminal and agent on the machine sees the same setup. Environment variables matter only for CI and short-lived shells; note that an agent app launched from Finder, Launchpad, or the Windows Start menu does not inherit shell environment variables.
 
 ## Step 1: Check Existing Configuration
 
@@ -50,7 +50,7 @@ mongodb-cli config show --output json
 For CI or a short-lived shell, also check the environment with values redacted:
 
 ```bash
-env | grep -E '^(MONGODB_URI|MONGODB_ATLAS_CLIENT_ID|MONGODB_ATLAS_CLIENT_SECRET|MONGODB_CLI_ACCESS|MONGODB_CLI_ATLAS_TOOLS)=' | sed -E '/^MONGODB_CLI_(ACCESS|ATLAS_TOOLS)=/!s/=.*/=[set]/'
+env | grep -E '^(MONGODB_URI|MONGODB_ATLAS_CLIENT_ID|MONGODB_ATLAS_CLIENT_SECRET|MONGODB_CLI_ACCESS|MONGODB_CLI_ATLAS_TOOLS|MONGODB_CLI_CREDENTIAL_STORE)=' | sed -E '/^MONGODB_CLI_(ACCESS|ATLAS_TOOLS|CREDENTIAL_STORE)=/!s/=.*/=[set]/'
 ```
 
 Then inspect and diagnose the profile the user wants to use (for an environment connection, run `doctor` without `--profile`):
@@ -208,7 +208,7 @@ mongodb-cli --profile <deployment> local deployments connect <deployment>
 mongodb-cli --profile <deployment> doctor --output json
 ```
 
-- `connect` verifies the deployment and stores its connection string in the keyring under the profile named by `--profile` (default: the deployment name); the string is never printed.
+- `connect` verifies the deployment and stores its connection string under the profile named by `--profile` (default: the deployment name); the string is never printed.
 - New profiles are read-only. Add `--access read-write` when creating the profile if the user wants writes on this local deployment. Replacing the connection string of an existing profile needs `--yes`, after the user confirms.
 - If `connect` reports that the deployment is still starting, wait a few seconds and run it again.
 
@@ -241,7 +241,7 @@ Proceed to Step 5 (Configure Credentials).
 
 ### 5.1: Workstation (interactive terminal)
 
-**Option A, guided:** the user runs the guided setup in their own terminal. It creates or repairs a profile, masks and verifies the connection string before storing it in the keyring, asks for the access mode, activates the profile, and installs the bundled skills. It needs a real interactive terminal; with redirected input or output it exits without changing configuration and prints the equivalent non-interactive commands.
+**Option A, guided:** the user runs the guided setup in their own terminal. It creates or repairs a profile, masks and verifies the connection string before storing it in the credential store, asks for the access mode, activates the profile, and installs the bundled skills. It needs a real interactive terminal; with redirected input or output it exits without changing configuration and prints the equivalent non-interactive commands.
 
 ```bash
 mongodb-cli init
@@ -264,7 +264,7 @@ mongodb-cli profile add <atlas-profile>
 mongodb-cli --profile <atlas-profile> auth login --atlas
 ```
 
-`auth login --atlas` prompts for the client ID and, masked, for the client secret, then verifies them by requesting a token before storing them in the keyring. It is refused with "Atlas tools are disabled" until Atlas tools are enabled (Step 3b.3). An agent cannot answer these prompts, so ask the user to run the commands.
+`auth login --atlas` prompts for the client ID and, masked, for the client secret, then verifies them by requesting a token before storing them in the credential store. It is refused with "Atlas tools are disabled" until Atlas tools are enabled (Step 3b.3). An agent cannot answer these prompts, so ask the user to run the commands.
 
 ### 5.2: Scripts and Secret Stores (no prompt)
 
@@ -300,13 +300,29 @@ mongodb-cli --profile <profile> doctor --output json
 
 A healthy run exits 0. With Atlas tools enabled, doctor also checks the profile's Atlas credentials and API access; checks for credentials the profile does not hold are reported as `skipped`. If doctor exits nonzero, read the failed checks from stdout and see Troubleshooting.
 
+### 5.5: Credential Store
+
+Connection strings without secrets, such as local servers and Atlas Local deployments, stay in the config file. Everything else goes to the credential store chosen with `mongodb-cli config set credential-store <store>`; `config show` lists it once set (the default is `keychain`), and `doctor` reports where a profile's connection string came from.
+
+| Store | Where credentials live | When to suggest it |
+| --- | --- | --- |
+| `keychain` (default) | macOS Keychain, Windows Credential Manager, or the Linux Secret Service | Most setups. On macOS each entry trusts the binary that saved it, so every rebuilt or upgraded binary asks again |
+| `security` (macOS only) | The same login keychain, read through `/usr/bin/security` | The user is tired of keychain prompts: each entry asks once, choose Always Allow, and upgrades do not ask again |
+| `file` | `credentials.toml` beside the config file, owner-only but in plain text | Hosts without a usable keyring, or when no prompt is acceptable. Switching to it needs confirmation in an interactive terminal |
+
+```bash
+mongodb-cli config set credential-store security --migrate
+```
+
+`--migrate` moves the credentials of existing profiles to the new store; without it, profiles keep their credentials in the old store until `auth login` runs again. `MONGODB_CLI_CREDENTIAL_STORE` overrides the setting for one shell or CI job. Agents must never set it themselves; switching stores is the user's choice.
+
 Proceed to Step 6 (Next Steps).
 
 ## Step 6: Next Steps
 
 ### For Options A & B (Connection String / Service Account):
 
-1. **No restart needed**: mongodb-cli reads the profile and keyring on every command. Only environment-variable setups need a new shell, or a restarted agent app, to pick up changes.
+1. **No restart needed**: mongodb-cli reads the profile and credential store on every command. Only environment-variable setups need a new shell, or a restarted agent app, to pick up changes.
 
 2. **Select the profile explicitly**: in agent workflows, run the doctor preflight and pass the same `--profile <profile>` and `--output json` to every command. `mongodb-cli profile use <profile>` changes the default profile.
 
@@ -330,8 +346,9 @@ Proceed to Step 6 (Next Steps).
 
 ## Troubleshooting
 
-- **`doctor` fails**: read each failed check's `message`; the exit code gives the category: 3 configuration or authentication (missing profile or credentials, wrong password, keyring problems), 4 network or timeout (DNS, firewall, IP access list), 5 server rejection
-- **No usable keyring** (for example a headless Linux host without a Secret Service): use environment variables (Step 5.3) instead of stored profiles
+- **`doctor` fails**: read each failed check's `message`; the exit code gives the category: 3 configuration or authentication (missing profile or credentials, wrong password, credential store problems), 4 network or timeout (DNS, firewall, IP access list), 5 server rejection
+- **No usable keyring** (for example a headless Linux host without a Secret Service): use environment variables (Step 5.3), or the `file` credential store (Step 5.5)
+- **macOS keeps asking to allow keychain access**: the default `keychain` store trusts only the binary that saved each entry, so a rebuilt or upgraded mongodb-cli asks again; suggest the `security` store (Step 5.5)
 - **"Atlas tools are disabled"** (exit 3, also from `auth login --atlas` and `auth logout --atlas`): enable them with `mongodb-cli config set atlas-tools enabled` (with the user's agreement), and check that `MONGODB_CLI_ATLAS_TOOLS` is not set to `disabled`
 - **Atlas Admin API errors (Option B)**: exit 3; HTTP 401 means invalid or expired credentials (the user runs `auth login --atlas` again), 403 means missing roles or an IP that is not in the service account's API Access List
 - **Docker errors (Option C)**: "Docker is not running" (exit 4) → start Docker; `DOCKER_HOST` must point to a supported endpoint

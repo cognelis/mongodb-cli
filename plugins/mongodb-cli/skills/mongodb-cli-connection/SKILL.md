@@ -1,6 +1,6 @@
 ---
 name: mongodb-cli-connection
-description: Optimize MongoDB client connection configuration (pools, timeouts, patterns) for any supported driver language, optionally checking the server version and current connections with the mongodb-cli executable. Use this skill when working/updating/reviewing on functions that instantiate or configure a MongoDB client (eg, when calling `connect()`), configuring connection pools, troubleshooting connection errors (ECONNREFUSED, timeouts, pool exhaustion), optimizing performance issues related to connections. This includes scenarios like building serverless functions with MongoDB, creating API endpoints that use MongoDB, optimizing high-traffic MongoDB applications, creating long-running tasks and concurrency, or debugging connection-related failures. When the MongoDB MCP server is the active integration and the user did not ask for mongodb-cli, use the official mongodb-connection skill instead.
+description: Configure MongoDB driver clients - connection pools, timeouts, serverless and long-running patterns - and troubleshoot connection errors such as ECONNREFUSED, timeouts, or pool exhaustion, optionally checking the server with the mongodb-cli executable. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-connection skill.
 license: Apache-2.0
 metadata:
   version: "1.0.0"

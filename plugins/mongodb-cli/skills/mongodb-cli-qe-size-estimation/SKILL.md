@@ -3,7 +3,7 @@ name: mongodb-cli-qe-size-estimation
 license: Apache-2.0
 metadata:
   version: "1.0.0"
-description: Estimates the storage and memory impact of encrypting fields in collections with Queryable Encryption (QE) enabled, optionally reading the server version and document count with the mongodb-cli executable. Do NOT use for collections that use Client-Side Field Level Encryption (CSFLE) instead of QE. When the MongoDB MCP server is the active integration and the user did not ask for mongodb-cli, use the official mongodb-qe-size-estimation skill instead.
+description: Estimate the storage and memory impact of Queryable Encryption (QE) on encrypted fields, optionally reading the server version and document count with the mongodb-cli executable. Not for Client-Side Field Level Encryption (CSFLE). If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-qe-size-estimation skill.
 ---
 
 Adapted from [MongoDB's agent-skills](https://github.com/mongodb/agent-skills) (Apache-2.0, commit c370a63) for the mongodb-cli executable; modified to add optional read-only mongodb-cli checks.

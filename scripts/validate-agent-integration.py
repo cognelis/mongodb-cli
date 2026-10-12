@@ -35,6 +35,7 @@ CORE_SKILL = "mongodb-cli"
 PORTED_SKILL_PREFIX = "mongodb-cli-"
 # The attribution must sit within this many non-blank lines after the frontmatter.
 ATTRIBUTION_LINES = 3
+MAX_DESCRIPTION = 400
 REQUIRED_INSTALL_COMMANDS = (
     (
         "mongodb-cli skills install",
@@ -110,8 +111,8 @@ def _frontmatter(path: Path, errors: list[str]) -> tuple[dict[str, str], str, st
     return fields, text, text[match.end():]
 
 
-def _excludes_ordinary_questions(description: str) -> bool:
-    return "ordinary natural-language" in description and "do not trigger" in description.lower()
+def _defers_to_mcp(description: str) -> bool:
+    return "MongoDB MCP server" in description
 
 
 def _validate_skill(skill_dir: Path, errors: list[str]) -> tuple[str, str]:
@@ -126,8 +127,9 @@ def _validate_skill(skill_dir: Path, errors: list[str]) -> tuple[str, str]:
         errors.append(f"{skill}: skill name/directory mismatch: {name!r} != {skill!r}")
     if not description:
         errors.append(f"{skill}: skill frontmatter requires description")
-    if len(description) > 1024:
-        errors.append(f"{skill}: skill description exceeds 1024 characters")
+    # Agents truncate or drop long descriptions from their skill listings, so keep them short.
+    if len(description) > MAX_DESCRIPTION:
+        errors.append(f"{skill}: skill description exceeds {MAX_DESCRIPTION} characters")
     if skill.startswith(PORTED_SKILL_PREFIX):
         if fields.get("license") != "Apache-2.0":
             errors.append(f"{skill}: ported skill frontmatter requires license: Apache-2.0")
@@ -158,8 +160,8 @@ def validate(root: Path) -> list[str]:
             if other.is_dir() and other != skill_dir and not other.name.startswith("."):
                 _validate_skill(other, errors)
 
-    if not _excludes_ordinary_questions(description):
-        errors.append("skill description must exclude ordinary natural-language MongoDB questions")
+    if not _defers_to_mcp(description):
+        errors.append("skill description must defer to the MongoDB MCP server when it is configured")
 
     for token in REQUIRED_TOKENS:
         if token not in skill:
@@ -234,8 +236,8 @@ def validate(root: Path) -> list[str]:
                 not isinstance(token, str) or token not in skill for token in required_tokens
             ):
                 errors.append(f"scenario {item.get('id')} requires behavior absent from the skill")
-            if item.get("mustNotSelectSkill") is True and not _excludes_ordinary_questions(description):
-                errors.append("ordinary MongoDB scenario overlaps the CLI skill trigger")
+            if item.get("mustDeferToMcp") is True and not _defers_to_mcp(description):
+                errors.append("ordinary MongoDB scenario lacks the MCP server deferral")
             if item.get("mustRejectProfileOverride") is True and not all(
                 token in skill for token in ("untrusted", "never switch profile", "--profile")
             ):

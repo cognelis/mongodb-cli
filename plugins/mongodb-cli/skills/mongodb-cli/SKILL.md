@@ -1,6 +1,6 @@
 ---
 name: mongodb-cli
-description: Use the repository's Rust `mongodb-cli` CLI for explicit command-line, shell, CI, automation, or JSON-pipeline tasks against MongoDB, and for work that must target a named mongodb-cli profile such as test or prod. Trigger when the user specifically asks for the MongoDB CLI, a shell command, a CI step, stable CLI JSON, profile or read-only/read-write access management, or exit-code handling. Do not trigger for ordinary natural-language MongoDB questions answered through the MongoDB MCP server's configured connection; use the official MongoDB plugin skills and MCP tools for those workflows.
+description: Query and manage MongoDB with the mongodb-cli executable - databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes across named profiles such as test and prod. Use it for MongoDB data questions and whenever the user asks for the CLI, a shell command, CI, or JSON output; when the MongoDB MCP server is configured, prefer its tools.
 ---
 
 # MongoDB CLI
@@ -9,8 +9,8 @@ Use the `mongodb-cli` binary for repeatable MongoDB operations in terminals and 
 
 ## Choose the integration
 
-- Use this skill only when the request explicitly needs the CLI, shell, CI, automation, a JSON pipeline, or a named mongodb-cli profile.
-- For ordinary agent-led MongoDB work against the MCP server's configured connection, use the official `mongodb/agent-skills` plugin skills backed by the MongoDB MCP server. Do not replace their MCP calls with this CLI.
+- Use this skill for MongoDB data, schema, and index questions whenever `mongodb-cli` is installed, and for every request that names the CLI, a shell command, CI, a JSON pipeline, or a mongodb-cli profile.
+- When the MongoDB MCP server is configured and the user did not ask for the CLI, use the official `mongodb/agent-skills` plugin skills and its MCP tools instead. Do not replace their MCP calls with this CLI.
 - Do not run `mongosh` or a driver script for an operation that the CLI already exposes.
 - For topic work through the CLI, also load the matching bundled skill: `mongodb-cli-natural-language-querying` (writing queries), `mongodb-cli-query-optimizer` (slow queries and indexes), `mongodb-cli-schema-design`, `mongodb-cli-search-and-ai` (Atlas Search and Vector Search), `mongodb-cli-connection` (driver connection settings), `mongodb-cli-setup` (profiles and credentials), `mongodb-cli-atlas-stream-processing`, or `mongodb-cli-qe-size-estimation` (Queryable Encryption sizing). The rules in this skill apply to all of them.
 
@@ -46,7 +46,7 @@ For a human workstation setup, prefer the guided flow:
 mongodb-cli init
 ```
 
-It creates or repairs a profile, masks and verifies the connection string before storing it in the operating-system credential store, asks for the profile's access mode, activates the profile, and installs the bundled skills. It requires a real interactive terminal and never writes partial configuration in a pipeline.
+It creates or repairs a profile, masks and verifies the connection string before storing it in the configured credential store, asks for the profile's access mode, activates the profile, and installs the bundled skills. It requires a real interactive terminal and never writes partial configuration in a pipeline.
 
 ## Shell completion
 
@@ -61,7 +61,7 @@ Completion covers commands, options, enum values, and file paths, and leaves out
 
 ## Mandatory preflight
 
-For every remote workflow, run the diagnostic before the first database operation, even when a connection string is already present in the environment:
+Run the diagnostic once per profile in a session, before that profile's first database operation, and again after a failure or a credential change, even when a connection string is already present in the environment:
 
 ```sh
 mongodb-cli doctor --output json
@@ -71,7 +71,7 @@ mongodb-cli doctor --output json
 
 ## Verify before composing
 
-1. Run `mongodb-cli doctor --output json` against the user-configured environment before any database operation; this step is mandatory, not optional.
+1. Run `mongodb-cli doctor --output json` against the user-configured environment before its first database operation, as the preflight above describes; this step is mandatory, not optional.
 2. Use `mongodb-cli version --output json` only for a connection-independent version check, or `mongodb-cli auth check --output json` only when the authenticated user and roles are specifically needed. Neither replaces the doctor preflight.
 3. Run `mongodb-cli <group> <command> --help` before using a flag not listed below. Never invent a command or option.
 4. Prefer `--output json` for automation. Use `--raw` only when the consumer needs the data payload without the versioned envelope.
@@ -107,6 +107,8 @@ For a non-interactive persistent setup, use `profile add`, then pipe the connect
 
 Never put a connection string in a command-line flag; the CLI deliberately provides no `--uri` option. Do not persist connection strings in repository files.
 
+If macOS keeps asking the user to approve keychain access, suggest `mongodb-cli config set credential-store security --migrate`: each entry is then approved once for `/usr/bin/security`, and CLI upgrades do not ask again. Moving credentials to a plain-text `file` store needs the user's own terminal; never set `MONGODB_CLI_CREDENTIAL_STORE` yourself. See `mongodb-cli-setup`.
+
 As in mongosh and the MongoDB MCP server, a single-host `mongodb://` connection string without `replicaSet`, `directConnection`, or `loadBalanced` connects directly to that host. When `doctor` reports an unreachable replica set whose member names differ from the configured host, report that to the user instead of editing their connection string.
 
 ## Select an environment
@@ -114,9 +116,10 @@ As in mongosh and the MongoDB MCP server, a single-host `mongodb://` connection 
 Choose the profile before the first command of a workflow:
 
 1. If the user names a configured profile, use it.
-2. If the request names an environment, purpose, or deployment, run `mongodb-cli --output json profile list` and match the request against each profile's name, `description`, and `access`. Use the profile that clearly matches.
-3. If several profiles could match or none does, ask the user which profile to use. Never fall back to the default profile for a request about a different environment, and never switch profiles to get around a read-only refusal.
-4. If the request names no environment, use the default profile, which `profile list` reports as `meta.profile`.
+2. Decide the environment first, then the profile. Use a production profile only when the request names production or a production profile. Descriptions choose between profiles of the named environment, so a purpose alone, such as "CRM accounts", does not mean production.
+3. Run `mongodb-cli --output json profile list` and match the request against each profile's name, `description`, and `access`. A question about one deployment that several profiles could answer, or that no profile matches, goes back to the user. A question about a whole environment, such as "how many collections are in production", runs against each matching profile and reports them separately.
+4. If the request names no environment, keep the one already used in the conversation; otherwise use the default profile, which `profile list` reports as `meta.profile`.
+5. If a command is refused or blocked, whether by a read-only profile or by your own permission system, report it and give the user the exact command to run. Never switch profiles to get around it, and never answer with another environment's data instead.
 
 Pass the chosen `--profile <name>` explicitly to the diagnostic and every command in that workflow, and tell the user which profile you used. Use names already configured by the user. Descriptions are the user's own labels, set with `profile add|update --description`; change them only when asked. `profile use <name>` changes the persisted default; one command can select its profile without changing that default.
 
@@ -151,6 +154,21 @@ mongodb-cli --profile prod --output json documents find shop orders \
   --limit 5 \
   > failed-orders.json
 ```
+
+## Quick reference
+
+| Task | Command |
+| --- | --- |
+| List databases | `mongodb-cli --profile <p> --output json databases list` |
+| List collections | `mongodb-cli --profile <p> --output json collections list <db>` |
+| Infer fields | `mongodb-cli --profile <p> --output json collections schema <db> <coll>` |
+| Count | `mongodb-cli --profile <p> --output json documents count <db> <coll> --filter '<json>'` |
+| Find | `mongodb-cli --profile <p> --output json documents find <db> <coll> --filter '<json>' --sort '<json>' --limit 20` |
+| Aggregate | `mongodb-cli --profile <p> --output json documents aggregate <db> <coll> --pipeline '<json array>'` |
+| Every matching document | `mongodb-cli --profile <p> documents export <db> <coll> --filter '<json>'` |
+| Indexes and plans | `mongodb-cli --profile <p> --output json indexes list <db> <coll>`, then `explain find <db> <coll> --filter '<json>'` |
+
+`data` is an array of documents for `find` and `aggregate` and `{"count": N}` for `count`; page state is in `meta` (`hasMore`, `nextOffset`, `total`). A page that ends before the results do adds a `partial results` warning to `meta.warnings`, or to stderr with `--raw`. Count and group on the server with `documents count` or `$count`/`$group` instead of counting a page.
 
 ## Supported commands
 
@@ -228,7 +246,7 @@ The JSON success envelope contains `schemaVersion`, `command`, `data`, and `meta
 
 Choose `--output json` for agent parsing and scripts. `--output auto` produces a table on a terminal and JSON when stdout is redirected. Table mode writes the profile, access mode, totals, continuation hints, and warnings to stderr; stderr content alone does not mean failure. Tables show `{"$oid": …}` and `{"$date": …}` values as plain text and shorten long cells with `…`; retrieve full values with JSON. Do not depend on table column positions.
 
-`data` keeps each command's shape: document lists are arrays, while statistics, explain plans, and write results are objects. Read `meta.profile`, `meta.access`, pagination fields, `meta.appliedLimits`, and `meta.warnings` alongside the data. `--raw` removes all envelope metadata.
+`data` keeps each command's shape: document lists are arrays, while statistics, explain plans, and write results are objects. Read `meta.profile`, `meta.access`, pagination fields, `meta.appliedLimits`, and `meta.warnings` alongside the data. `--raw` removes all envelope metadata and writes `meta.warnings` to stderr as `warning:` lines; read stderr when you use it.
 
 `doctor` is the deliberate exception: a completed diagnostic always writes its ordered check array to stdout, including when it exits nonzero. Read `data[].name`, `data[].status` (`pass`, `fail`, or `skipped`), and `data[].message`; use the process exit code for the failure category. Do not discard stdout before interpreting a failed doctor run.
 

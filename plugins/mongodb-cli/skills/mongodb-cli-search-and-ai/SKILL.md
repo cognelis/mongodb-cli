@@ -1,6 +1,6 @@
 ---
 name: mongodb-cli-search-and-ai
-description: Guides MongoDB users through implementing and optimizing Atlas Search (full-text), Vector Search (semantic), and Hybrid Search solutions with the mongodb-cli executable. Use this skill when users need to build search functionality for text-based queries (autocomplete, fuzzy matching, faceted search), semantic similarity (embeddings, RAG applications), or combined approaches. Also use when users need text containment, substring matching ('contains', 'includes', 'appears in'), case-insensitive or multi-field text search, or filtering across many fields with variable combinations. Provides workflows for selecting the right search type, creating indexes, constructing queries, and optimizing performance using mongodb-cli commands. When the MongoDB MCP server is the active integration and the user did not ask for mongodb-cli, use the official mongodb-search-and-ai skill instead.
+description: Build Atlas Search (full-text, autocomplete, fuzzy, facets), Vector Search (embeddings, RAG), and hybrid search with the mongodb-cli executable, including contains-style or case-insensitive text matching across fields. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-search-and-ai skill.
 license: Apache-2.0
 metadata:
   version: "1.0.0"
