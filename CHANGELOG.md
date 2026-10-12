@@ -5,6 +5,8 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-12
+
 ### Added
 
 - `profile list` and `profile show` return `database`, the database a profile's

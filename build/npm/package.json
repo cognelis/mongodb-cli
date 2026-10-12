@@ -1,6 +1,6 @@
 {
   "name": "@cognelis/mongodb-cli",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "MongoDB CLI derived from the MongoDB MCP server, with per-profile access modes, diagnostics, and shell completion.",
   "homepage": "https://github.com/cognelis/mongodb-cli#readme",
   "repository": {
