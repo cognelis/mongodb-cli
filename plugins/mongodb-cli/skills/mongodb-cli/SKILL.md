@@ -1,11 +1,20 @@
 ---
 name: mongodb-cli
-description: Query and manage MongoDB with the mongodb-cli executable - databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes across named profiles such as test and prod. Use it for MongoDB data questions and whenever the user asks for the CLI, a shell command, CI, or JSON output; when the MongoDB MCP server is configured, prefer its tools.
+description: Load this before running any mongodb-cli command - it holds the profile rules (test vs production), page caps, and output shapes that --help lacks. Covers MongoDB databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes. Use it for MongoDB data questions and scripts; when the MongoDB MCP server is configured, prefer its tools.
 ---
 
 # MongoDB CLI
 
 Use the `mongodb-cli` binary for repeatable MongoDB operations in terminals and automation. Keep connection strings out of arguments, logs, generated files, and shell tracing.
+
+## Start here
+
+1. Run `mongodb-cli --output json profile list` as a command of its own and choose by environment, using each profile's `description` and `access`. Use a production profile only when the user names production; a purpose such as "CRM" does not mean production.
+2. Run `mongodb-cli --profile <profile> doctor --output json` once for that profile in the session.
+3. Database and collection names are positional: `mongodb-cli --profile <profile> --output json documents find <db> <coll> --filter '<json>'`. A profile's `database` field is the database its connection string names.
+4. A page holds at most 100 documents, the profile's maxDocumentsPerQuery, and a larger `--limit` is refused. While `meta.hasMore` is true, repeat with `--offset <meta.nextOffset>`, or use `documents export` for every match.
+5. Keep the JSON envelope. With `--raw`, read stderr, where partial-result warnings go; never discard it with `2>/dev/null`.
+6. `config` has only `path`, `show`, and `set`.
 
 ## Choose the integration
 
@@ -124,10 +133,10 @@ Choose the profile before the first command of a workflow:
 Pass the chosen `--profile <name>` explicitly to the diagnostic and every command in that workflow, and tell the user which profile you used. Use names already configured by the user. Descriptions are the user's own labels, set with `profile add|update --description`; change them only when asked. `profile use <name>` changes the persisted default; one command can select its profile without changing that default.
 
 ```sh
-mongodb-cli --profile prod profile show
-mongodb-cli --profile prod doctor --output json
+mongodb-cli --profile <profile> profile show
+mongodb-cli --profile <profile> doctor --output json
 # Continue only if doctor succeeds.
-mongodb-cli --profile prod --output json documents count shop orders
+mongodb-cli --profile <profile> --output json documents count shop orders
 ```
 
 Connections resolve in this order: `--profile`, `MONGODB_URI`, then the default profile. With an explicit `--profile`, `MONGODB_URI` is ignored and `meta.warnings` says so. `profile show` selects its positional name first, then `--profile`, then the default profile, and reports the profile's access, safety settings, and which credentials are stored, never their values.
@@ -140,7 +149,8 @@ set -eu
 umask 077
 doctor_report="$(mktemp)"
 trap 'rm -f "$doctor_report"' EXIT
-if mongodb-cli --profile prod doctor --output json >"$doctor_report"; then
+profile="<name from profile list>"
+if mongodb-cli --profile "$profile" doctor --output json >"$doctor_report"; then
   rm -f "$doctor_report"
   trap - EXIT
 else
@@ -148,7 +158,7 @@ else
   cat "$doctor_report" >&2
   exit "$doctor_status"
 fi
-mongodb-cli --profile prod --output json documents find shop orders \
+mongodb-cli --profile "$profile" --output json documents find shop orders \
   --filter '{"status": "failed"}' \
   --sort '{"createdAt": -1}' \
   --limit 5 \
@@ -194,7 +204,7 @@ mongodb-cli knowledge sources|search
 
 The last three groups are Atlas tools; see below.
 
-`documents find` accepts `--filter`, `--projection`, `--sort`, `--limit` (default 10), `--offset` (alias `--skip`), and `--response-bytes-limit`. A page holds at most `--limit` documents, capped by the profile's document cap (default 100), and stops before `--response-bytes-limit` (default 1 MiB) or the profile's byte cap (default 16 MiB). `meta.limit` reports the effective page size, and `meta.appliedLimits` names the caps that shortened the page (`maxDocumentsPerQuery`, `responseBytesLimit`, or `maxBytesPerQuery`), with matching `meta.warnings`. If one document alone exceeds the byte limit, the command exits 7 with `response_too_large`; narrow the projection. `meta.total` is a best-effort count with a 10-second cap by default; when it is missing, `meta.warnings` explains why.
+`documents find` accepts `--filter`, `--projection`, `--sort`, `--limit` (default 10), `--offset` (alias `--skip`), and `--response-bytes-limit`. A page holds at most `--limit` documents; a `--limit` above the profile's document cap (default 100) exits 2, so page with `--offset` instead. A page also stops before `--response-bytes-limit` (default 1 MiB) or the profile's byte cap (default 16 MiB). `meta.limit` reports the effective page size, and `meta.appliedLimits` names the caps that shortened the page (`maxDocumentsPerQuery`, `responseBytesLimit`, or `maxBytesPerQuery`), with matching `meta.warnings`. If one document alone exceeds the byte limit, the command exits 7 with `response_too_large`; narrow the projection. `meta.total` is a best-effort count with a 10-second cap by default; when it is missing, `meta.warnings` explains why.
 
 `documents aggregate` reads its pipeline from `--pipeline` or `--file <path|->` and pages like `documents find`: the CLI appends `$skip`/`$limit` stages for `--offset`/`--limit`, and `meta.total` comes from a parallel `$count`. Pipelines with `$out` or `$merge` are not paged and report `meta.writeTargets`. `databases aggregate` runs a database-level pipeline whose first stage is `$currentOp`, `$documents`, `$listLocalSessions`, or `$queryStats`; `$changeStream` is refused.
 
