@@ -1,5 +1,5 @@
 ---
-version: 0.5.0
+version: 0.5.1
 name: mongodb-cli-atlas-stream-processing
 description: Manage MongoDB Atlas Stream Processing with the mongodb-cli executable - workspaces, Kafka, cluster, S3, HTTPS, and Lambda connections, processor lifecycle, diagnostics, and tier sizing. Needs Atlas tools enabled and Atlas service-account credentials. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-atlas-stream-processing skill.
 license: Apache-2.0

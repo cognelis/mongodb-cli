@@ -676,6 +676,58 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
     );
     assert_eq!(session.ok("read-only", &find)["data"][0]["n"], 7);
 
+    let branch_documents: Vec<Value> = (0..500)
+        .map(|n| json!({"left": n, "right": n * 2}))
+        .collect();
+    session.ok(
+        "read-write",
+        &[
+            "documents",
+            "insert",
+            db,
+            "indexed_or",
+            "--documents",
+            &serde_json::to_string(&branch_documents).unwrap(),
+        ],
+    );
+    for keys in [r#"{"left": 1}"#, r#"{"right": 1}"#] {
+        session.ok(
+            "read-write",
+            &["indexes", "create", db, "indexed_or", "--keys", keys],
+        );
+    }
+    let branches = session.ok(
+        "read-only",
+        &[
+            "--require-index",
+            "documents",
+            "find",
+            db,
+            "indexed_or",
+            "--filter",
+            r#"{"$or": [{"left": 7}, {"right": 998}]}"#,
+            "--projection",
+            r#"{"_id": 0, "left": 1}"#,
+            "--sort",
+            r#"{"left": 1}"#,
+        ],
+    );
+    assert_eq!(branches["data"], json!([{"left": 7}, {"left": 499}]));
+    let mixed = session.fails(
+        "read-only",
+        &[
+            "--require-index",
+            "documents",
+            "find",
+            db,
+            "indexed_or",
+            "--filter",
+            r#"{"$or": [{"left": 7}, {"unindexed": 1}]}"#,
+        ],
+        3,
+    );
+    assert_eq!(mixed["error"]["code"], "forbidden");
+
     // The verbosity reaches the server, which may not support it.
     let explain = [
         "explain",

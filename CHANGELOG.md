@@ -5,6 +5,15 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-11
+
+### Fixed
+
+- `--require-index` recognizes indexed OR, sort-merge, and index-intersection
+  plans with multiple `inputStages`, instead of misclassifying them as collection
+  scans. Every winning-plan branch must use an index; unknown, empty, and
+  collection-scan branches remain refused.
+
 ## [0.5.0] - 2026-11-11
 
 ### Changed

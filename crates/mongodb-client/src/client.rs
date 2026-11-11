@@ -1134,8 +1134,8 @@ const INDEX_STAGES: &[&str] = &[
     "IDHACK",
 ];
 
-/// Walk the winning plan's `inputStage` chain looking for an index stage. Aggregation plans
-/// pushed into `$cursor` and SBE `queryPlan` wrappers are also understood.
+/// Require index use on every winning-plan branch, including `inputStages` plans.
+/// Aggregation `$cursor` and SBE `queryPlan` wrappers are also understood.
 fn uses_index(plan: &Document) -> bool {
     let planner = plan.get_document("queryPlanner").ok().or_else(|| {
         plan.get_array("stages")
@@ -1154,18 +1154,34 @@ fn uses_index(plan: &Document) -> bool {
     if let Ok(query_plan) = stage.get_document("queryPlan") {
         stage = query_plan;
     }
-    loop {
+    let mut pending = vec![stage];
+    while let Some(stage) = pending.pop() {
         if stage
             .get_str("stage")
             .is_ok_and(|name| INDEX_STAGES.contains(&name))
         {
-            return true;
+            continue;
         }
-        match stage.get_document("inputStage") {
-            Ok(next) => stage = next,
-            Err(_) => return false,
+        if stage.get_str("stage") == Ok("COLLSCAN") {
+            return false;
+        }
+        if let Ok(next) = stage.get_document("inputStage") {
+            pending.push(next);
+        } else if let Ok(children) = stage.get_array("inputStages") {
+            if children.is_empty() {
+                return false;
+            }
+            for child in children {
+                let Some(child) = child.as_document() else {
+                    return false;
+                };
+                pending.push(child);
+            }
+        } else {
+            return false;
         }
     }
+    true
 }
 
 /// Connect to a single host directly unless the connection string asks for discovery, as
@@ -1252,6 +1268,28 @@ mod tests {
             options.direct_connection, None,
             "SRV connections always discover"
         );
+    }
+
+    #[test]
+    fn index_check_accepts_only_fully_indexed_multi_input_plans() {
+        for stage in ["OR", "SORT_MERGE", "AND_SORTED", "AND_HASH"] {
+            let plan = doc! {"queryPlanner": {"winningPlan": {"stage": "FETCH", "inputStage": {
+                "stage": stage, "inputStages": [{"stage": "IXSCAN"}, {"stage": "IXSCAN"}]
+            }}}};
+            assert!(uses_index(&plan), "{stage}");
+        }
+        for children in [
+            vec![doc! {"stage": "IXSCAN"}, doc! {"stage": "COLLSCAN"}],
+            vec![],
+            vec![doc! {"stage": "IXSCAN"}, doc! {"stage": "UNKNOWN"}],
+        ] {
+            assert!(!uses_index(
+                &doc! {"queryPlanner": {"winningPlan": {"stage": "OR", "inputStages": children}}}
+            ));
+        }
+        assert!(!uses_index(
+            &doc! {"queryPlanner": {"winningPlan": {"stage": "OR", "inputStages": ["invalid"]}}}
+        ));
     }
 
     #[test]

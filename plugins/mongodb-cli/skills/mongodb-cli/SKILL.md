@@ -1,5 +1,5 @@
 ---
-version: 0.5.0
+version: 0.5.1
 name: mongodb-cli
 description: Load this before running any mongodb-cli command - it holds the profile rules (test vs production), page caps, and output shapes that --help lacks. Covers MongoDB databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes. Use it for MongoDB data questions and scripts; when the MongoDB MCP server is configured, prefer its tools.
 ---

@@ -177,3 +177,11 @@ are updated by `mongodb-cli skills install`.
 贡献者和提交规范一同进入本版本，后续 Author 为 `dnvyrn <dnvyrn@gamil.com>`，AI trailer 只记录实际参与者。
 
 本轮本地安装和 Skill 内容已核验；Rust 两个包的 npm tarball 安装冒烟通过。三个 doctor 的实际表格输出保持原样，维护检查只追加行。
+
+## 第六轮 RSI：请求与结果的相邻边界
+
+原索引检查只沿 inputStage 链前进，完全走索引的 OR/inputStages 计划仍被拒绝。改为遍历 winning plan 的所有子分支，拒绝任一 COLLSCAN、未知或空分支，不检查 rejectedPlans。用临时 mongod 证明两个已索引分支可以查询，混合未索引条件仍被拒绝。计划结构依据 [MongoDB Explain 文档](https://www.mongodb.com/docs/manual/reference/explain-results/)。
+
+第六轮验收：0.5.1：工作区测试（含临时 mongod 的全索引 OR 与未索引分支拒绝）、9 项 Node 安装测试、14 项 Python 测试、fmt、clippy、Agent 集成及发布检查通过。 未实测生产服务及其他操作系统。
+
+本轮本地 CLI/Skills 已刷新，124 个安装文件与源码核对一致；两个 Rust 包的安装冒烟通过。按新提交规范记录动机、变更、验证与实际 Codex 署名，不推送或发布。

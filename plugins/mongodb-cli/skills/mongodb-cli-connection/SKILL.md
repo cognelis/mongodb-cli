@@ -1,5 +1,5 @@
 ---
-version: 0.5.0
+version: 0.5.1
 name: mongodb-cli-connection
 description: Configure MongoDB driver clients - connection pools, timeouts, serverless and long-running patterns - and troubleshoot connection errors such as ECONNREFUSED, timeouts, or pool exhaustion, optionally checking the server with the mongodb-cli executable. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-connection skill.
 license: Apache-2.0

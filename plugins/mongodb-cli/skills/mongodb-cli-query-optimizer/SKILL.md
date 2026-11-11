@@ -1,5 +1,5 @@
 ---
-version: 0.5.0
+version: 0.5.1
 name: mongodb-cli-query-optimizer
 description: Find and fix slow MongoDB queries with the mongodb-cli executable - explain plans, index recommendations, Performance Advisor, and slow-query logs. Use only for performance, indexing, or slow-query requests, not for writing ordinary queries. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-query-optimizer skill.
 compatibility: 'Requires the mongodb-cli executable. Uses indexes list and explain when a profile connects to the deployment; uses Atlas Performance Advisor (atlas clusters advisor) when Atlas tools are enabled and the profile has Atlas service-account credentials. Without either, suggest indexes from query shape only. User creates indexes in Atlas or migrations unless tooling allows otherwise.'
