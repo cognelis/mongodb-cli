@@ -1,5 +1,5 @@
 ---
-version: 0.5.2
+version: 0.6.0
 name: mongodb-cli-schema-design
 description: MongoDB schema design patterns and anti-patterns, checked against real data with the mongodb-cli executable - embed vs reference, one-to-many, unbounded arrays, the 16MB limit, time series, polymorphic data, validation, migrations, TTL, and index explosion. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-schema-design skill.
 license: Apache-2.0

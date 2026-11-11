@@ -152,12 +152,12 @@ fn release_check(current: &str, body: &Value) -> Value {
         latest.trim_start_matches('v')
     );
     if state == "update_available" {
-        message.push_str(&format!("; upgrade {APP} (npm: npm install -g @cognelis/{APP}@latest), run `{APP} skills install`, then reload the agent context"));
+        message.push_str(&format!("; upgrade {APP} (npm: npm install -g @cognelis/{APP}@latest), inspect `{APP} skills status`, review changes, run `{APP} skills install`, then reload the agent context"));
     }
     check("package", "pass", message)
 }
 
-fn skill_version(text: &str) -> Option<&str> {
+pub(crate) fn skill_version(text: &str) -> Option<&str> {
     let mut lines = text.lines();
     if lines.next()?.trim() != "---" {
         return None;
@@ -267,7 +267,7 @@ fn skill_check(roots: &[PathBuf], loaded: &str, bundled: &[(&str, &str)]) -> Val
         message.push_str(&format!("; {}", issues.join("; ")));
     }
     if !complete || !issues.is_empty() {
-        message.push_str(&format!("; run `{APP} skills install`"));
+        message.push_str(&format!("; inspect `{APP} skills status`, then run `{APP} skills install` for an intended refresh"));
     }
     if loaded_version != VERSION {
         message.push_str("; reload the agent context (or load the Skill if not yet loaded)");

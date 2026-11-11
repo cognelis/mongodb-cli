@@ -50,12 +50,18 @@ async function main() {
     const value = JSON.parse(run(process.execPath, [launcher, 'version', '--output', 'json'], {env: cliEnv}));
     assert.equal(value.data.version, pkg.version);
     assert.equal(value.schemaVersion, '1');
+    cliEnv.CLAUDE_CONFIG_DIR = path.join(temporary, 'claude');
+    const skills = JSON.parse(run(process.execPath, [launcher, 'skills', 'status', '--target', 'claude', '--output', 'json'], {env: cliEnv}));
+    assert.equal(skills.command, 'skills.status');
+    assert.ok(skills.data.length > 0);
+    assert.ok(skills.data.every(item => item.agent === 'claude' && item.status === 'missing' && item.bundledVersion === pkg.version));
+    assert.ok(!fs.existsSync(cliEnv.CLAUDE_CONFIG_DIR), 'status must not create an installation');
     const invalid = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'find'], {encoding: 'utf8', env: cliEnv});
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout, '');
     assert.equal(JSON.parse(invalid.stderr).error.code, 'validation');
     assert.ok(run(process.execPath, [launcher, 'completion', 'zsh'], {env: cliEnv}).startsWith('#compdef mongodb-cli\n'));
-    console.log(`Packed ${packed.filename}; verified allowed files, native launch, JSON, completion, and exit-code forwarding.`);
+    console.log(`Packed ${packed.filename}; verified allowed files, native launch, JSON, Skill status, completion, and exit-code forwarding.`);
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
 }
 

@@ -118,6 +118,15 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
                 .await;
         }
         Command::Skills {
+            command: SkillsCommand::Status { target },
+        } => {
+            let results = crate::skill_install::status(*target).map_err(AppError::config)?;
+            return Ok(local(
+                "skills.status",
+                serde_json::to_value(results).expect("Skill status is serializable"),
+            ));
+        }
+        Command::Skills {
             command: SkillsCommand::Install { target },
         } => {
             let results = crate::skill_install::install(*target).map_err(AppError::config)?;

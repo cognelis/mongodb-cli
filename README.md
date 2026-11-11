@@ -605,3 +605,29 @@ Maintained by **dnvyrn** (`dnvyrn@gamil.com`), with Codex and Claude available a
 
 For the informational `package` and `skill` rows, `pass` means the inspection
 completed; the message states whether an update or reload is needed.
+
+## Inspect Skill installations
+
+```sh
+mongodb-cli skills status --target codex --output json
+mongodb-cli skills status --target claude --output json
+```
+
+`--target all` is the default. This read-only, offline command inspects the same
+managed global installation locations as `skills install`, honoring
+`CLAUDE_CONFIG_DIR`, and works without valid connection configuration. It does
+not call the service, open the credential store, create directories, or change
+files. MongoDB reports each of its nine Skills separately.
+
+Each result includes `bundledVersion`, `installedVersion` (null when unknown),
+`changedFiles`, `missingFiles`, and `unreadableFiles`. Status is `current` when
+all managed bytes match, `missing` when SKILL.md is absent, `unreadable` when a
+managed path cannot be read as a regular file, and `different` for other changes
+or missing references. Even same-version edits are detected. Unmanaged files
+are outside this comparison and remain untouched.
+
+Exit 0 means inspection completed; scripts must inspect the result statuses.
+Review local customizations before an intended `skills install`, verify status
+again afterward, then reload the agent context. File alignment does not prove
+that the running agent loaded the new Skill. Doctor remains the connection and
+version overview; this command provides per-file installation detail.

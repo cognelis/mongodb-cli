@@ -102,7 +102,7 @@ pub enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
-    /// Install coding-agent skills.
+    /// Manage coding-agent skills.
     Skills {
         #[command(subcommand)]
         command: SkillsCommand,
@@ -172,6 +172,12 @@ pub enum Command {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum SkillsCommand {
+    /// Inspect installed Skill files.
+    Status {
+        /// Choose which agent installations to inspect.
+        #[arg(long, value_enum, default_value_t = SkillTarget::All)]
+        target: SkillTarget,
+    },
     /// Install or update agent skills.
     Install {
         /// Choose which agents receive the skills.

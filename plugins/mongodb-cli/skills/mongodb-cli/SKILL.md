@@ -1,10 +1,19 @@
 ---
-version: 0.5.2
+version: 0.6.0
 name: mongodb-cli
 description: Load this before running any mongodb-cli command - it holds the profile rules (test vs production), page caps, and output shapes that --help lacks. Covers MongoDB databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes. Use it for MongoDB data questions and scripts; when the MongoDB MCP server is configured, prefer its tools.
 ---
 
 # MongoDB CLI
+
+## Choose the next step
+
+- **Local installation or Skill maintenance:** run `mongodb-cli skills status --target codex --output json` (or `--target claude` / `all`). This is offline and read-only; it needs no profile selection, credentials, or doctor preflight.
+- **Data investigation or changes:** follow the environment-selection and doctor rules below before the first data operation. Production and write permissions still require the user's stated intent.
+- **After a CLI upgrade:** inspect `changedFiles`, `missingFiles`, and `unreadableFiles` before refreshing Skills. If managed files contain intentional local edits, review them before running `skills install`; do not silently overwrite customizations. Unmanaged files are ignored and preserved.
+- **After an intended refresh:** run `skills status` again, then reload the agent context. `current` proves managed file contents match this CLI's bundle; it does not prove the agent has loaded them.
+
+`skills status` reports `current`, `different`, `missing` (no SKILL.md), or `unreadable`. It returns installed and bundled versions, paths, and relative file lists without printing file contents. Exit 0 means inspection completed, even if files differ; inspect `data[].status` for alignment.
 
 ## Doctor version checks
 
@@ -23,7 +32,7 @@ run `mongodb-cli skills install`, then reload the agent context.
 
 Use the `mongodb-cli` binary for repeatable MongoDB operations in terminals and automation. Keep connection strings out of arguments, logs, generated files, and shell tracing.
 
-## Start here
+## Start here for data tasks
 
 1. Run `mongodb-cli --output json profile list` as a command of its own and choose by environment, using each profile's `description` and `access`. Use a production profile only when the user names production; a purpose such as "CRM" does not mean production.
 2. Run `mongodb-cli --profile <profile> doctor --output json` once for that profile in the session.
