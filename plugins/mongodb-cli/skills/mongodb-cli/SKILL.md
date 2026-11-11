@@ -23,6 +23,8 @@ For multiline updates, use `documents update ... --update-file <path|->` instead
 
 Use `--filter-file <path|->` for complex write predicates, including EJSON identifiers. Update/delete require either an inline filter or a filter file; missing/invalid files never mean “all documents”. For updates, at most one of filter and update may read stdin. Preview both inputs, verify their exact scope, then keep both files unchanged for the authorized execution; re-review if either changes. This flag does not apply to find/count/export.
 
+For aggregation review, use `documents aggregate ... --dry-run --output json`. Inspect the canonical pipeline, `writeTargets`, JavaScript marker and baseline write/confirmation requirements. `requestedPage` is only the supplied options; profile caps are unchecked. `$out`/`$merge` reports `pagingMode: unpaged_write`: never assume `--limit` bounds those writes. `emptyFilter` is null for pipelines. Reuse the unchanged pipeline only after normal preflight and authorization; `--yes --dry-run` still never executes, and local parsing does not prove stage semantics or target validity.
+
 ## Doctor version checks
 
 When invoking `doctor`, set `MONGODB_CLI_SKILL` to the `version` in this loaded

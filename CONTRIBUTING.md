@@ -238,3 +238,11 @@ Skill 增加任务分流：本地维护直接使用离线命令，数据任务�
 验收：工作区测试（含临时 mongod）、9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查和 npm tarball 冒烟通过。验证 inline/file/stdin 一致、BSON 精度、缺失/空/非法文件、双 stdin 拒绝，以及文件更新/删除的只读和确认保护。Docker 与真实知识库可选测试未启用。
 
 新增行为的回归用例先在原实现确认失败，再通过实现和全量验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他平台和模型级 Skill 效果。
+
+## 第十二轮 RSI：可靠保存审阅结果与聚合预览（2026-11-12）
+
+将 documents aggregate 纳入 dry-run，复用现有 EJSON 管道解析、写入分类、写入目标和 JavaScript 扫描。预览区分请求分页参数与实际 profile 限制，明确写入聚合 unpaged_write；emptyFilter 对聚合为 null。Skill 提醒 $out/$merge 不受自动分页限制，预览不等于授权或服务端语义校验。
+
+验收：工作区回归（含临时 mongod）、9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查及 npm tarball 冒烟通过。验证读管道、$out/$merge 目标、EJSON 精度，以及带 --yes 的预览不创建目标集合，正式执行仍要求写权限和确认。Docker 与真实知识库可选测试未启用。
+
+新增用例均先在原实现确认失败，再完成实现与验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他操作系统或模型级 Skill 效果。

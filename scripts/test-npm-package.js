@@ -69,6 +69,10 @@ async function main() {
     assert.equal(updatePlan.data.request.update.$set.reviewed, true);
     assert.equal(updatePlan.data.executed, false);
     assert.equal(updatePlan.data.request.filter.status, 'failed');
+    const aggregatePlan = JSON.parse(run(process.execPath, [launcher, '--output', 'json', '--dry-run', '--yes', 'documents', 'aggregate', 'app', 'items', '--pipeline', '[{"$out":"archive"}]'], {env: cliEnv}));
+    assert.equal(aggregatePlan.data.executed, false);
+    assert.equal(aggregatePlan.data.pagingMode, 'unpaged_write');
+    assert.deepEqual(aggregatePlan.data.writeTargets, ['$out replaces every document in app.archive']);
     const invalid = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'find'], {encoding: 'utf8', env: cliEnv});
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout, '');

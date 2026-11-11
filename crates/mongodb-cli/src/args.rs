@@ -33,7 +33,7 @@ pub struct Cli {
     /// Confirm destructive or billable operations.
     #[arg(long, global = true)]
     pub yes: bool,
-    /// Preview document writes without executing.
+    /// Preview document operations without executing.
     #[arg(long, global = true)]
     pub dry_run: bool,
     /// Refuse queries that scan the collection.

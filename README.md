@@ -652,7 +652,7 @@ matched counts have not been checked. `emptyFilter` describes literal `{}`;
 a nonempty filter can still match all documents. Custom profile rules may add
 confirmation requirements beyond `requiresYesByDefault`.
 
-Only insert/update/delete support `--dry-run`; other commands fail before side
+Only documents insert/update/delete/aggregate support `--dry-run`; other commands fail before side
 effects. After selecting the intended profile and running doctor, use a read-only
 count/query to assess the filter when needed. Execution still needs existing
 read-write access and confirmation guards. A preview grants no authorization,
@@ -689,3 +689,24 @@ Review the parsed plan and reuse the unchanged files after normal preflight and
 write authorization. Files are read again per invocation and do not freeze the
 matching documents. Read-only, confirmation, index and JavaScript guards still
 apply; this option is limited to document update/delete.
+
+### Review an aggregation before it runs
+
+```sh
+mongodb-cli documents aggregate app orders --file pipeline.json --dry-run --output json
+```
+
+This works for both reads and pipelines containing `$out`/`$merge`, without
+connecting. Inspect `request.pipeline`, `writeTargets`, `requiresWriteAccess`,
+`requiresYesByDefault`, and `serverSideJavaScript`. `emptyFilter` is null because
+an aggregation has no standalone filter. `requestedPage` records the supplied
+limit/offset/byte options; it is not an effective limit after profile rules.
+`pagingMode: unpaged_write` means `$out`/`$merge` runs without automatic paging;
+`profile_bounded_read` means read execution will resolve normal profile limits.
+Do not interpret `--limit` as a bound on aggregation writes.
+
+Even `--yes --dry-run` never writes. Local shape checks do not validate MongoDB
+stage/operator semantics, matched counts or permissions. Reuse the unchanged
+pipeline after normal preflight and authorization; write aggregation still
+requires read-write access and `--yes`. Database-level aggregation and other
+commands remain outside this preview capability.

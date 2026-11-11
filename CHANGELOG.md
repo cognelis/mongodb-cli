@@ -7,6 +7,11 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ### Added
 
+- `documents aggregate --dry-run` previews read and write pipelines offline.
+  It reports canonical EJSON, `$out`/`$merge` write targets, baseline authorization
+  requirements, JavaScript markers and requested paging. Write pipelines explicitly
+  report unpaged execution; effective profile limits and server semantics remain unchecked.
+
 - `documents update|delete --filter-file <path|->` reads a required EJSON
   filter from a file or stdin instead of `--filter`. Missing, conflicting, invalid
   or unreadable filters fail without broadening scope. An update cannot read both

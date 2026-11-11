@@ -79,16 +79,17 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
             &cli.command,
             Command::Documents {
                 command: DocumentsCommand::Insert { .. }
+                    | DocumentsCommand::Aggregate { .. }
                     | DocumentsCommand::Update { .. }
                     | DocumentsCommand::Delete { .. }
             }
         ) {
             return Err(AppError::validation(
-                "--dry-run supports documents insert, update, and delete only",
+                "--dry-run supports documents insert, update, delete, and aggregate only",
             ));
         }
         let operation = Operation::parse(&cli.command)?;
-        let mut plan = operation.write_plan()?;
+        let mut plan = operation.document_plan()?;
         plan["requestedProfile"] = json!(cli.profile);
         return Ok(local("documents.plan", plan));
     }
@@ -1000,7 +1001,7 @@ enum Operation {
 }
 
 impl Operation {
-    fn write_plan(&self) -> Result<Value, AppError> {
+    fn document_plan(&self) -> Result<Value, AppError> {
         let canonical = |value: Bson| value.into_canonical_extjson();
         let (database, collection, request, empty_filter) = match self {
             Self::DocumentsInsert {
@@ -1011,7 +1012,7 @@ impl Operation {
                 database,
                 collection,
                 json!({"documents": documents.iter().cloned().map(|doc| canonical(Bson::Document(doc))).collect::<Vec<_>>() }),
-                false,
+                Some(false),
             ),
             Self::DocumentsUpdate {
                 database,
@@ -1023,7 +1024,7 @@ impl Operation {
                 database,
                 collection,
                 json!({"filter": canonical(Bson::Document(filter.clone())), "update": canonical(update.clone()), "upsert": upsert, "multi": true}),
-                filter.is_empty(),
+                Some(filter.is_empty()),
             ),
             Self::DocumentsDelete {
                 database,
@@ -1033,21 +1034,38 @@ impl Operation {
                 database,
                 collection,
                 json!({"filter": canonical(Bson::Document(filter.clone())), "multi": true}),
-                filter.is_empty(),
+                Some(filter.is_empty()),
+            ),
+            Self::DocumentsAggregate {
+                database,
+                collection,
+                pipeline,
+                ..
+            } => (
+                database,
+                collection,
+                json!({"pipeline": pipeline.iter().cloned().map(|stage| canonical(Bson::Document(stage))).collect::<Vec<_>>() }),
+                None,
             ),
             _ => {
-                return Err(AppError::validation(
-                    "this operation has no document-write plan",
-                ));
+                return Err(AppError::validation("this operation has no document plan"));
             }
         };
-        Ok(
-            json!({"executed": false, "command": self.name(), "database": database, "collection": collection,
+        let mut plan = json!({"executed": false, "command": self.name(), "database": database, "collection": collection,
             "request": request, "emptyFilter": empty_filter,
             "requiresWriteAccess": self.writes(), "requiresYesByDefault": self.destructive(), "profileRulesChecked": false, "indexCheckPerformed": false,
             "serverSideJavaScript": self.server_side_js(), "authorizationChecked": false,
-            "validation": "local_shape_only", "matchedCount": null}),
-        )
+            "validation": "local_shape_only", "matchedCount": null});
+        if let Self::DocumentsAggregate { page, .. } = self {
+            plan["writeTargets"] = json!(self.write_targets());
+            plan["requestedPage"] = json!({"limit": page.limit, "offset": page.offset, "responseBytesLimit": page.response_bytes_limit});
+            plan["pagingMode"] = json!(if self.writes() {
+                "unpaged_write"
+            } else {
+                "profile_bounded_read"
+            });
+        }
+        Ok(plan)
     }
 
     fn parse(command: &Command) -> Result<Self, AppError> {

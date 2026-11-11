@@ -382,6 +382,17 @@ fn run_scenario(session: &Session<'_>, db: &str) {
         "--pipeline",
         r#"[{"$match": {}}, {"$out": "users_copy"}]"#,
     ];
+    let draft = session.ok("read-write", &[&out[..], &["--yes", "--dry-run"]].concat());
+    assert_eq!(draft["data"]["executed"], false);
+    assert_eq!(draft["data"]["requiresWriteAccess"], true);
+    assert_eq!(draft["data"]["pagingMode"], "unpaged_write");
+    assert!(
+        session.ok("read-only", &["collections", "list", db])["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|collection| collection["name"] != "users_copy")
+    );
     session.fails("read-only", &[&out[..], &["--yes"]].concat(), 3);
     let unconfirmed = session.fails("read-write", &out, 2);
     let target = format!("$out replaces every document in {db}.users_copy");

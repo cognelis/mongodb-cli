@@ -248,3 +248,80 @@ fn write_filters_can_use_files_or_stdin_without_silently_broadening_scope() {
         .stdout("")
         .stderr(predicates::str::contains("cannot both read stdin"));
 }
+
+#[test]
+fn aggregation_plans_identify_write_targets_without_applying_paging() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("broken.toml");
+    std::fs::write(&config, "bad = [").unwrap();
+    for (pipeline, writes) in [
+        (
+            r#"[{"$match":{"id":{"$numberLong":"9007199254740993"}}}]"#,
+            false,
+        ),
+        (r#"[{"$out":"archive"}]"#, true),
+        (
+            r#"[{"$merge":{"into":{"db":"audit","coll":"archive"},"whenMatched":"replace"}}]"#,
+            true,
+        ),
+    ] {
+        let file = dir.path().join("pipeline.json");
+        std::fs::write(&file, pipeline).unwrap();
+        let output = cli(&config)
+            .args(["--yes", "documents", "aggregate", "app", "items", "--file"])
+            .arg(&file)
+            .args(["--limit", "7", "--offset", "3"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let plan: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let data = &plan["data"];
+        assert_eq!(data["executed"], false);
+        assert_eq!(data["command"], "documents.aggregate");
+        assert_eq!(data["requiresWriteAccess"], writes);
+        assert_eq!(data["requiresYesByDefault"], writes);
+        assert_eq!(
+            data["request"]["pipeline"],
+            serde_json::from_str::<Value>(pipeline).unwrap()
+        );
+        assert_eq!(data["requestedPage"]["limit"], 7);
+        assert_eq!(data["requestedPage"]["offset"], 3);
+        assert_eq!(
+            data["pagingMode"],
+            if writes {
+                "unpaged_write"
+            } else {
+                "profile_bounded_read"
+            }
+        );
+        assert!(data["emptyFilter"].is_null());
+        if writes {
+            let target = data["writeTargets"][0].as_str().unwrap();
+            if pipeline.contains("$out") {
+                assert!(target.contains("app.archive"));
+            } else {
+                assert!(
+                    target.contains("audit.archive") && target.contains("whenMatched: replace")
+                );
+            }
+        } else {
+            assert_eq!(data["writeTargets"], json!([]));
+        }
+    }
+    cli(&config)
+        .args([
+            "documents",
+            "aggregate",
+            "app",
+            "items",
+            "--pipeline",
+            "[1]",
+        ])
+        .assert()
+        .code(2)
+        .stdout("");
+}
