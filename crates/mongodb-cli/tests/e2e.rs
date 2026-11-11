@@ -159,11 +159,13 @@ fn end_to_end_against_a_real_server() {
 }
 
 fn run_scenario(session: &Session<'_>, db: &str) {
-    let doctor = session.ok("read-only", &["doctor"]);
-    // Atlas tools are disabled by default, so only the five MongoDB checks run.
+    let doctor = session.ok("read-only", &["doctor", "--no-update-check"]);
+    // Atlas tools are disabled; maintenance advice follows the five connection checks.
     let checks = doctor["data"].as_array().unwrap();
-    assert_eq!(checks.len(), 5);
-    assert!(checks.iter().all(|check| check["status"] == "pass"));
+    assert_eq!(checks.len(), 7);
+    assert!(checks[..5].iter().all(|check| check["status"] == "pass"));
+    assert_eq!(checks[5]["status"], "skipped");
+    assert_eq!(checks[6]["name"], "skill");
     assert_eq!(
         session.ok("read-only", &["server", "info"])["data"]["version"]
             .as_str()

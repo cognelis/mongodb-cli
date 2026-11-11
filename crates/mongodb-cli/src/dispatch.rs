@@ -87,10 +87,20 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
                 json!({"version": env!("CARGO_PKG_VERSION")}),
             ));
         }
-        Command::Doctor => {
+        Command::Doctor { no_update_check } => {
             // Atlas checks follow the MongoDB checks only while Atlas tools are enabled.
             let report = run_doctor(cli).await;
-            return Ok(crate::atlas::doctor(cli, report, crate::gate::enabled()).await);
+            let mut report = crate::atlas::doctor(cli, report, crate::gate::enabled()).await;
+            if let Some(checks) = report.data.as_array_mut() {
+                checks.extend(
+                    crate::maintenance::checks(
+                        *no_update_check,
+                        Duration::from_secs(cli.timeout.max(1)),
+                    )
+                    .await,
+                );
+            }
+            return Ok(report);
         }
         Command::Config {
             command: ConfigCommand::Path,

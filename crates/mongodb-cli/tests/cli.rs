@@ -829,7 +829,17 @@ fn credential_store_choice_and_secret_free_connection_strings() {
 
     // doctor names where each connection string came from, even when the server is unreachable.
     for (profile, source) in [("local", "config file"), ("prod", "credentials file")] {
-        let output = run(&["--timeout", "1", "--profile", profile, "doctor"], None);
+        let output = run(
+            &[
+                "--timeout",
+                "1",
+                "--profile",
+                profile,
+                "doctor",
+                "--no-update-check",
+            ],
+            None,
+        );
         let checks = envelope(&output)["data"].clone();
         let credentials_check = checks
             .as_array()
@@ -1111,7 +1121,7 @@ fn missing_configuration_explains_setup_and_doctor_reports_on_stdout() {
         .stderr(predicate::str::contains("mongodb-cli init"));
 
     let output = cli(&config)
-        .args(["--output", "json", "doctor"])
+        .args(["--output", "json", "doctor", "--no-update-check"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(3));
@@ -1122,7 +1132,12 @@ fn missing_configuration_explains_setup_and_doctor_reports_on_stdout() {
         .iter()
         .map(|check| check["status"].as_str().unwrap())
         .collect();
-    assert_eq!(statuses, ["pass", "fail", "skipped", "skipped", "skipped"]);
+    assert_eq!(
+        statuses,
+        [
+            "pass", "fail", "skipped", "skipped", "skipped", "skipped", "pass"
+        ]
+    );
 }
 
 #[test]
@@ -1130,7 +1145,14 @@ fn doctor_reports_an_unreachable_server_without_exposing_credentials() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
     let output = cli(&config)
-        .args(["--output", "json", "--timeout", "2", "doctor"])
+        .args([
+            "--output",
+            "json",
+            "--timeout",
+            "2",
+            "doctor",
+            "--no-update-check",
+        ])
         .env(
             "MONGODB_URI",
             "mongodb://reader:never-print-this@127.0.0.1:9/?serverSelectionTimeoutMS=500",

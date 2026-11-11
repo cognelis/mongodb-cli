@@ -1,0 +1,13 @@
+# <type>: <具体结果>（无 scope，建议 72 字符以内）
+# 类型：feat fix refactor perf docs test build ci chore revert
+
+动机：
+
+变更：
+
+验证：
+
+# 仅按实际参与者添加以下 trailer；不要自动同时添加。
+# Co-authored-by: Codex <noreply@openai.com>
+# Co-authored-by: Claude <noreply@anthropic.com>
+# 不兼容变更另加 BREAKING CHANGE: 和迁移说明。

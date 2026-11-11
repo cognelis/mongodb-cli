@@ -158,3 +158,22 @@ Verify that the installed Skills and active plugin cache match the canonical
 source. New Codex threads pick up the refreshed plugin instructions. Claude Code
 plugin-managed installations use their own plugin update flow; standalone Skills
 are updated by `mongodb-cli skills install`.
+
+## 第五轮：doctor 包与 Skill 版本诊断
+
+参考 `/Users/caspian/git/jenkins-cli/internal/app/doctor.go` 的诊断规则：更新查询最多 5 秒，
+可显式跳过；加载版本与安装版本分开判断，升级信息不参与连接健康或退出码计算。
+新检查追加到原报告末尾，保留原有列与输出 envelope；版本信息来自公开发布元数据和本地 Skill 文件，
+不复用业务认证。Skill frontmatter 版本随产品版本更新，并由发布检查防止漂移。
+
+## 提交与贡献者
+
+提交正文、验证记录和 AI 署名遵循 [提交规范](docs/commit-conventions.md)。项目维护者及 AI 协作工具见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
+
+## 第五轮验收
+
+0.5.0：工作区测试（含临时 mongod）、9 项 Node 安装测试、14 项 Python 测试、fmt/clippy、Skill 集成和发布检查通过；Docker 与真实知识库可选测试未启用。
+包版本查询使用模拟发布响应覆盖更新、离线/错误、超时与响应大小边界；Skill 覆盖缺失、旧版、未知、当前、需重载、项目安装及不可读状态。
+贡献者和提交规范一同进入本版本，后续 Author 为 `dnvyrn <dnvyrn@gamil.com>`，AI trailer 只记录实际参与者。
+
+本轮本地安装和 Skill 内容已核验；Rust 两个包的 npm tarball 安装冒烟通过。三个 doctor 的实际表格输出保持原样，维护检查只追加行。

@@ -33,10 +33,17 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for path in RELEASE.PLUGINS:
             files[path] = json.dumps({"name": "mongodb-cli", "version": "0.1.0", "description": "keep me"}) + '\n'
         files[RELEASE.NPM_MANIFEST] = json.dumps({"name": "@cognelis/mongodb-cli", "version": "0.1.0"}) + '\n'
+        for path in RELEASE.SKILLS:
+            files[path] = "---\nversion: 0.1.0\n---\nTest Skill\n"
         for name, contents in files.items():
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(contents, encoding="utf-8")
+
+    def test_rejects_skill_version_drift(self) -> None:
+        self.replace(RELEASE.SKILLS[0], "version: 0.1.0", "version: 0.0.1")
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "product version"):
+            RELEASE.validate_contents(RELEASE.read_files(self.root))
 
     def replace(self, name: str, old: str, new: str) -> None:
         path = self.root / name
@@ -47,6 +54,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertEqual(version, "0.2.0")
         contents = RELEASE.read_files(self.root)
         self.assertEqual(RELEASE.validate_contents(contents), version)
+        for path in RELEASE.SKILLS:
+            self.assertEqual(RELEASE.skill_version(contents[path]).group("value"), version)
         self.assertEqual(json.loads(contents[RELEASE.NPM_MANIFEST])["version"], version)
         self.assertIn('name = "serde"\nversion = "1.0.9"', contents["Cargo.lock"])
         self.assertIn('serde = "1"', contents["Cargo.toml"])

@@ -21,3 +21,10 @@
   refreshing installed Skills, rebuild the CLI first and verify the installed content.
 - Commit, tag, push, and publish only within the scope the user requested. In
   particular, a version bump by itself does not authorize publishing to a remote.
+
+## Commit policy and attribution
+
+- Follow [docs/commit-conventions.md](docs/commit-conventions.md) and `.gitmessage`.
+- This project now permits commit bodies and actual-participant `Co-authored-by` trailers, superseding the old single-line/no-trailer rule. Keep titles without a scope.
+- Use `dnvyrn <dnvyrn@gamil.com>` for subsequent human-authored commits. Do not rewrite history.
+- Credit Codex and/or Claude only when they actually participated. A completed RSI round must be verified and committed; do not infer push/tag/publish authorization from that.

@@ -1,7 +1,8 @@
 {
   "name": "mongodb-cli",
   "owner": {
-    "name": "mongodb-cli contributors"
+    "name": "dnvyrn",
+    "email": "dnvyrn@gamil.com"
   },
   "metadata": {
     "description": "Rust MongoDB CLI skills for Claude Code",

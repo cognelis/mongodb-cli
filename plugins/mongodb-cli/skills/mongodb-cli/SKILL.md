@@ -1,9 +1,25 @@
 ---
+version: 0.5.0
 name: mongodb-cli
 description: Load this before running any mongodb-cli command - it holds the profile rules (test vs production), page caps, and output shapes that --help lacks. Covers MongoDB databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes. Use it for MongoDB data questions and scripts; when the MongoDB MCP server is configured, prefer its tools.
 ---
 
 # MongoDB CLI
+
+## Doctor version checks
+
+When invoking `doctor`, set `MONGODB_CLI_SKILL` to the `version` in this loaded
+file's frontmatter. Do not infer it from the installed CLI's version: the agent
+may still have an older Skill in context. Without this handshake, doctor can
+inspect installed files but cannot know which Skill the agent loaded.
+
+`mongodb-cli doctor` also checks the latest stable GitHub release (at most five
+seconds, or the command timeout if shorter). Use `doctor --no-update-check`
+for offline work. The appended `package` and `skill` rows are informational:
+update availability, missing or outdated Skills, and lookup failures do not
+change connection health or the exit code. Upgrade the CLI first if needed,
+run `mongodb-cli skills install`, then reload the agent context.
+
 
 Use the `mongodb-cli` binary for repeatable MongoDB operations in terminals and automation. Keep connection strings out of arguments, logs, generated files, and shell tracing.
 

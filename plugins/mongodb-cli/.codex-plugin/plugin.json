@@ -1,9 +1,10 @@
 {
   "name": "mongodb-cli",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Use the Rust MongoDB CLI safely in shell, CI, and JSON automation workflows.",
   "author": {
-    "name": "mongodb-cli contributors"
+    "name": "dnvyrn",
+    "email": "dnvyrn@gamil.com"
   },
   "homepage": "https://github.com/cognelis/mongodb-cli",
   "repository": "https://github.com/cognelis/mongodb-cli",
@@ -19,7 +20,7 @@
     "displayName": "MongoDB CLI",
     "shortDescription": "Safe MongoDB CLI workflows for shell and CI.",
     "longDescription": "Guides Codex to use the Rust mongodb-cli binary with stable JSON, secret-safe connection strings, read-only profiles, and confirmed destructive operations.",
-    "developerName": "mongodb-cli contributors",
+    "developerName": "dnvyrn",
     "category": "Developer Tools",
     "capabilities": [
       "Read",

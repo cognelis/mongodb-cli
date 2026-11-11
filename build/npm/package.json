@@ -1,6 +1,7 @@
 {
   "name": "@cognelis/mongodb-cli",
-  "version": "0.4.4",
+  "version": "0.5.0",
+  "author": {"name": "dnvyrn", "email": "dnvyrn@gamil.com"},
   "description": "MongoDB CLI derived from the MongoDB MCP server, with per-profile access modes, diagnostics, and shell completion.",
   "homepage": "https://github.com/cognelis/mongodb-cli#readme",
   "repository": {
@@ -9,6 +10,7 @@
     "directory": "build/npm"
   },
   "bugs": {"url": "https://github.com/cognelis/mongodb-cli/issues"},
+  "contributors": [{"name": "dnvyrn", "email": "dnvyrn@gamil.com"}, {"name": "Codex", "url": "https://openai.com/codex/"}, {"name": "Claude", "url": "https://claude.ai/"}],
   "license": "Apache-2.0",
   "keywords": ["mongodb", "database", "cli", "json", "automation"],
   "bin": {"mongodb-cli": "bin/mongodb-cli.js"},

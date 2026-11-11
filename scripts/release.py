@@ -20,7 +20,8 @@ PLUGINS = (
     "plugins/mongodb-cli/.claude-plugin/plugin.json",
 )
 NPM_MANIFEST = "build/npm/package.json"
-FILES = ("Cargo.toml", "Cargo.lock", "CHANGELOG.md", *PLUGINS, NPM_MANIFEST)
+SKILLS = tuple(sorted(str(path.relative_to(ROOT)) for path in (ROOT / "plugins/mongodb-cli/skills").glob("*/SKILL.md")))
+FILES = ("Cargo.toml", "Cargo.lock", "CHANGELOG.md", *PLUGINS, NPM_MANIFEST, *SKILLS)
 MANIFESTS = tuple(f"crates/{name}/Cargo.toml" for name in PACKAGES)
 SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 HEADINGS = re.compile(r"^## \[([^\]\n]+)\](?: - ([^\n]+))?$", re.MULTILINE)
@@ -112,9 +113,23 @@ def changelog_sections(text: str) -> list[re.Match]:
     return headings
 
 
+def skill_version(text: str) -> re.Match:
+    frontmatter = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", text, re.DOTALL)
+    if not frontmatter:
+        raise ReleaseError("Skill requires YAML frontmatter")
+    matches = list(re.compile(r"^version: (?P<value>[^\r\n]+)$", re.MULTILINE).finditer(text, 0, frontmatter.end()))
+    if len(matches) != 1:
+        raise ReleaseError("Skill requires exactly one version field")
+    version_tuple(matches[0].group("value"))
+    return matches[0]
+
+
 def validate_contents(contents: dict[str, str], preparing: bool = False) -> str:
     version = workspace_version(contents["Cargo.toml"]).group("value")
     version_tuple(version)
+    for path in SKILLS:
+        if skill_version(contents[path]).group("value") != version:
+            raise ReleaseError(f"{path} must use product version {version}")
     for path in MANIFESTS:
         start, end = section(contents[path], "package")
         body = contents[path][start:end]
@@ -234,6 +249,8 @@ def prepare(root: Path, kind: str, date: str) -> str:
         after[path], count = re.subn(r'("version"\s*:\s*)' + old, lambda match: match.group(1) + json.dumps(version), before[path])
         if count != 1:
             raise ReleaseError(f"expected one version field in {path}")
+    for path in SKILLS:
+        after[path] = replace_values(before[path], [skill_version(before[path])], version)
     after["CHANGELOG.md"] = (
         changelog[:unreleased.end()] + f"\n\n## [{version}] - {release_date.isoformat()}\n\n"
         + notes + "\n\n" + changelog[latest.start():]

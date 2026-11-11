@@ -290,7 +290,7 @@ fn doctor_adds_atlas_checks_only_while_atlas_tools_are_enabled() {
     // Disabled by default: the five MongoDB checks only, and Atlas is never contacted.
     let output = atlas(&config, &stub.base)
         .env_remove("MONGODB_CLI_ATLAS_TOOLS")
-        .arg("doctor")
+        .args(["doctor", "--no-update-check"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(3));
@@ -308,13 +308,20 @@ fn doctor_adds_atlas_checks_only_while_atlas_tools_are_enabled() {
             "configuration",
             "credentials",
             "server",
-            "authentication"
+            "authentication",
+            "package",
+            "skill"
         ]
     );
     assert!(stub.requests().is_empty());
 
     // Enabled: Atlas credentials alone satisfy the doctor, and the MongoDB checks are skipped.
-    let envelope = success(&atlas(&config, &stub.base).arg("doctor").output().unwrap());
+    let envelope = success(
+        &atlas(&config, &stub.base)
+            .args(["doctor", "--no-update-check"])
+            .output()
+            .unwrap(),
+    );
     let checks: Vec<_> = envelope["data"]
         .as_array()
         .unwrap()
@@ -327,7 +334,7 @@ fn doctor_adds_atlas_checks_only_while_atlas_tools_are_enabled() {
         })
         .collect();
     assert_eq!(
-        checks[5..],
+        checks[5..8],
         [
             ("atlas-credentials", "pass"),
             ("atlas-token", "pass"),

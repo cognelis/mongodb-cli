@@ -222,6 +222,19 @@ impl Agent {
     }
 }
 
+pub(crate) fn bundled_skills() -> Vec<(&'static str, &'static str)> {
+    SKILL_FILES
+        .iter()
+        .filter(|(_, path, _)| *path == "SKILL.md")
+        .map(|(name, _, bytes)| {
+            (
+                *name,
+                std::str::from_utf8(bytes).expect("bundled Skill is UTF-8"),
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};
