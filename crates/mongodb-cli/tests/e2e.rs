@@ -284,19 +284,26 @@ fn run_scenario(session: &Session<'_>, db: &str) {
     );
     assert_eq!(sum["data"], json!([{"_id": null, "sum": 6}]));
 
-    let updated = session.ok(
-        "read-write",
-        &[
-            "documents",
-            "update",
-            db,
-            "users",
-            "--filter",
-            r#"{"name": "a"}"#,
-            "--update",
-            r#"{"$set": {"n": 10}}"#,
-        ],
+    let update_dir = tempfile::tempdir().unwrap();
+    let update_path = update_dir.path().join("update.json");
+    std::fs::write(&update_path, r#"{"$set": {"n": 10}}"#).unwrap();
+    let update_args = [
+        "documents",
+        "update",
+        db,
+        "users",
+        "--filter",
+        r#"{"name": "a"}"#,
+        "--update-file",
+        update_path.to_str().unwrap(),
+    ];
+    let plan = session.ok("read-only", &[&update_args[..], &["--dry-run"]].concat());
+    assert_eq!(
+        plan["data"]["request"]["update"]["$set"]["n"],
+        json!({"$numberInt": "10"})
     );
+    session.fails("read-only", &update_args, 3);
+    let updated = session.ok("read-write", &update_args);
     assert_eq!(updated["data"]["modifiedCount"], 1);
 
     // Index key order is preserved and the server validates every option.

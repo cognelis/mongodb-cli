@@ -550,8 +550,17 @@ pub enum DocumentsCommand {
         /// Set the update as JSON.
         ///
         /// An update document such as {"$set": {"status": "done"}}, or an array of pipeline stages.
-        #[arg(long)]
-        update: String,
+        #[arg(
+            long,
+            required_unless_present = "update_file",
+            conflicts_with = "update_file"
+        )]
+        update: Option<String>,
+        /// Read an update from a file or stdin (-).
+        ///
+        /// Accept an Extended JSON update document or pipeline.
+        #[arg(long, value_hint = clap::ValueHint::FilePath)]
+        update_file: Option<PathBuf>,
         /// Insert when nothing matches.
         #[arg(long)]
         upsert: bool,

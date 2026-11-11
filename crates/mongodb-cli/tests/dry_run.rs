@@ -111,3 +111,61 @@ fn preview_rejects_invalid_inputs_and_unsupported_commands_before_side_effects()
         .code(2)
         .stdout("");
 }
+
+#[test]
+fn update_file_and_stdin_share_inline_parsing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("broken.toml");
+    std::fs::write(&config, "broken = [").unwrap();
+    let file = dir.path().join("update.json");
+    let update = r#"[{"$set":{"id":{"$numberLong":"9007199254740993"}}}]"#;
+    std::fs::write(&file, update).unwrap();
+    let base = ["documents", "update", "app", "items", "--filter", "{}"];
+    let inline = cli(&config)
+        .args(base)
+        .args(["--update", update])
+        .output()
+        .unwrap();
+    assert!(inline.status.success());
+    for source in [file.to_str().unwrap(), "-"] {
+        let output = cli(&config)
+            .args(base)
+            .args(["--update-file", source])
+            .write_stdin(update)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            serde_json::from_slice::<Value>(&inline.stdout).unwrap()
+        );
+    }
+    cli(&config).args(base).assert().code(2).stdout("");
+    cli(&config)
+        .args(base)
+        .args(["--update", "{}", "--update-file", "-"])
+        .write_stdin(update)
+        .assert()
+        .code(2)
+        .stdout("");
+    cli(&config)
+        .args(base)
+        .arg("--update-file")
+        .arg(dir.path().join("missing.json"))
+        .assert()
+        .code(2)
+        .stdout("");
+    for invalid in ["[1]", "{", "null"] {
+        cli(&config)
+            .args(base)
+            .args(["--update-file", "-"])
+            .write_stdin(invalid)
+            .assert()
+            .code(2)
+            .stdout("");
+    }
+}

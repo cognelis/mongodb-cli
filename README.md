@@ -658,3 +658,18 @@ count/query to assess the filter when needed. Execution still needs existing
 read-write access and confirmation guards. A preview grants no authorization,
 and `--yes --dry-run` still never performs the write. Supplied values appear in
 the plan; review them before retaining or sharing it.
+
+### Preview and reuse an update file
+
+```sh
+mongodb-cli documents update app orders --filter '{"status":"failed"}' --update-file update.json --dry-run --output json
+cat update.json | mongodb-cli documents update app orders --filter '{"status":"failed"}' --update-file - --dry-run --output json
+```
+
+`update.json` contains an update document such as `{"$set":{"reviewed":true}}`
+or an array of update pipeline stages, using Extended JSON for BSON types.
+Provide exactly one of `--update` and `--update-file`; `--filter` remains required.
+The same parser and access, confirmation, JavaScript, and index guards apply
+when executing. After reviewing and authorizing the change, reuse the unchanged
+file and filter and remove `--dry-run`. Files are read again on each invocation;
+the preview does not lock their contents or the matched database records.

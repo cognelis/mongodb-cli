@@ -61,6 +61,11 @@ async function main() {
     assert.equal(plan.data.executed, false);
     assert.equal(plan.data.authorizationChecked, false);
     assert.equal(plan.data.emptyFilter, true);
+    const updateFile = path.join(temporary, 'update.json');
+    fs.writeFileSync(updateFile, '{"$set":{"reviewed":true}}');
+    const updatePlan = JSON.parse(run(process.execPath, [launcher, '--output', 'json', '--dry-run', 'documents', 'update', 'app', 'items', '--filter', '{}', '--update-file', updateFile], {env: cliEnv}));
+    assert.equal(updatePlan.data.request.update.$set.reviewed, true);
+    assert.equal(updatePlan.data.executed, false);
     const invalid = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'find'], {encoding: 'utf8', env: cliEnv});
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout, '');

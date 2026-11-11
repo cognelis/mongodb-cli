@@ -222,3 +222,11 @@ Skill 增加任务分流：本地维护直接使用离线命令，数据任务�
 
 第九轮验收：工作区测试（含临时 mongod，验证 --yes --dry-run 删除后文档数不变）、9 项 Node 安装测试、14 项 Python 测试、fmt/clippy、Agent 集成及发布检查通过；工作区 release 二进制的 npm tarball 安装测试覆盖 documents.plan。Docker 与真实知识库可选测试未启用。
 本轮未执行全局重装或插件刷新；草稿使用工作区构建试用。未验证生产服务、其他操作系统或模型级 Skill 效果。
+
+## 第十轮 RSI：请求复用与命令发现
+
+新增 documents update --update-file，接受文件或 stdin，与 --update 互斥；复用现有 EJSON 解析和权限检查。回归覆盖 inline/file/stdin 一致、长整数精度、缺失/冲突输入和非法内容；临时 mongod 验证同一文件可以预览和写入，read-only 仍拒绝执行。
+
+验收：工作区测试（含临时 mongod）、9 项 Node 安装测试、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查及工作区 release 二进制 npm tarball 冒烟通过。Docker 与真实知识库可选测试未启用。完整回归曾发现新增参数帮助过长，缩短补全标题并保留长帮助后通过。
+
+本轮新增能力的用例均先在原实现确认失败，再完成实现与验证。保持 Unreleased，不递增版本，不刷新全局安装或插件。通用 Skill 校验器不接受项目既有的 version frontmatter 字段；保留 doctor 需要的字段，并使用仓库的 Skill/发布校验。未验证生产服务、其他操作系统及模型级 Skill 效果。

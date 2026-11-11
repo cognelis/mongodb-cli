@@ -7,6 +7,10 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ### Added
 
+- `documents update --update-file <path|->` reads an Extended JSON update
+  document or pipeline from a file or stdin. It is mutually exclusive with
+  `--update` and shares the same parsing, dry-run, and execution guards.
+
 - `documents insert|update|delete --dry-run` prints an unexecuted write-intent
   plan without loading connection credentials or contacting MongoDB. Canonical
   Extended JSON preserves BSON types. Plans flag empty filters, baseline write/

@@ -1264,12 +1264,19 @@ impl Operation {
                     collection,
                     filter,
                     update,
+                    update_file,
                     upsert,
                 } => Self::DocumentsUpdate {
                     database: non_empty(database, "database")?,
                     collection: non_empty(collection, "collection")?,
                     filter: ejson::parse_document(filter, "--filter")?,
-                    update: ejson::parse_update(update, "--update")?,
+                    update: match (update, update_file) {
+                        (Some(text), _) => ejson::parse_update(text, "--update")?,
+                        (None, Some(path)) => {
+                            ejson::parse_update(&read_input(path)?, "--update-file")?
+                        }
+                        (None, None) => unreachable!("clap requires --update or --update-file"),
+                    },
                     upsert: *upsert,
                 },
                 DocumentsCommand::Delete {

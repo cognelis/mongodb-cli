@@ -19,6 +19,8 @@ description: Load this before running any mongodb-cli command - it holds the pro
 
 `documents insert|update|delete --dry-run --output json` is local request planning, so it needs no connection or doctor preflight. Inspect the exact database/collection, canonical EJSON payload, `emptyFilter`, baseline access/confirmation requirements, and JavaScript marker. The result has `executed: false`; profile rules, index use, matched counts, and server validation are explicitly unchecked. A nonempty filter does not prove a small match set. Before real execution, select the user-intended profile, run doctor, and inspect/count matches when appropriate. Existing write authorization and `--yes` requirements still apply; preview alone grants no permission. Even `--yes --dry-run` performs no write.
 
+For multiline updates, use `documents update ... --update-file <path|->` instead of `--update`; supply exactly one. Files and stdin accept the same EJSON update document/pipeline as inline input. Preview with `--dry-run`, then reuse the unchanged file and filter for an authorized execution. A plan does not lock a file or snapshot the matched data; re-review if either changes. The usual access, confirmation, JavaScript, and index guards still apply.
+
 ## Doctor version checks
 
 When invoking `doctor`, set `MONGODB_CLI_SKILL` to the `version` in this loaded
