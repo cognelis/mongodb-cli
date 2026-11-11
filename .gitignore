@@ -7,5 +7,11 @@
 /build/npm/node_modules/
 *.tgz
 
+# Operating-system metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
 ## superpowsers
 docs/superpowers

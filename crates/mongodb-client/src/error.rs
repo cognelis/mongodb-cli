@@ -224,12 +224,13 @@ mod tests {
         let error = ClientError::server(
             26,
             "NamespaceNotFound",
-            "ns not found for mongodb://admin:hunter2@db.example.com/app",
+            "ns not found for mongodb://admin:hunter2@db.example.com/app?authMechanismProperties=AWS_SESSION_TOKEN:secret-token",
         );
         assert_eq!(error.code(), ErrorCode::NotFound);
         assert_eq!(error.server_code(), Some(26));
         assert_eq!(error.code_name(), Some("NamespaceNotFound"));
         assert!(!error.to_string().contains("hunter2"));
+        assert!(!error.to_string().contains("secret-token"));
         assert!(error.hint().is_some());
     }
 }

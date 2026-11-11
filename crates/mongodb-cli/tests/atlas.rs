@@ -423,6 +423,29 @@ fn reads_reuse_one_token_send_versioned_requests_and_revoke_it() {
 }
 
 #[test]
+fn unrepresentable_token_lifetimes_fail_without_panicking_or_sending_api_requests() {
+    let stub = Stub::start(vec![(
+        "POST",
+        "/api/oauth/token".into(),
+        200,
+        json!({"access_token": "test-token", "token_type": "Bearer", "expires_in": u64::MAX}),
+    )]);
+    let directory = tempfile::tempdir().unwrap();
+    let output = atlas(&directory.path().join("config.toml"), &stub.base)
+        .args(["atlas", "orgs", "list"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        failure(&output, 7)["error"]["code"],
+        "incompatible_response"
+    );
+    assert!(!printed(&output).contains("test-token"));
+    assert!(!printed(&output).contains(CLIENT_SECRET));
+    assert!(stub.api().is_empty());
+    assert_eq!(stub.requests().len(), 1);
+}
+
+#[test]
 fn paged_lists_send_paging_and_report_continuation() {
     let stub = Stub::start(vec![(
         "GET",

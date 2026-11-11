@@ -30,6 +30,44 @@ The Claude marketplace's `metadata.version` versions the marketplace descriptor,
 not the plugin. Update it only when releasing a descriptor/schema change; plugin
 versions belong in the plugin manifests.
 
+## RSI：有界的工具自改进
+
+每轮由编码 Agent 使用 CLI、发现失败、修改工具，再将验证结果作为下一轮的输入。
+当前采用人工发起的单轮流程，复用现有测试，不运行后台自修改或自动发布任务。
+
+1. 从脱敏的失败记录或可复现的边界场景提出一个假设，记录版本、输入和预期结果；数据库测试只用临时实例。
+2. 在现有测试中加入用例，先确认原实现失败。预期结果来自 CLI 契约，不能为迁就修复而降低断言。
+3. 检查共用函数的调用方及同一契约的其他入口（例如 URI 显示、驱动错误、输入校验），只修改根因；候选修复还需通过已有用例，不能只通过新增用例。
+4. 执行下方发布前检查，区分真正执行的测试与因缺少服务跳过的测试，记录环境限制。
+5. 保留通过验证的修复及回归用例，按版本规则收尾。失败时只撤销本轮候选改动；提交和发布仍遵守授权范围。
+
+首轮（2026-11-11）：驱动错误中嵌入的 URI 也必须删除秘密查询参数。
+`uri::tests::scrub_removes_secret_options_from_embedded_uris` 和已有服务器错误用例的新增断言，
+在修复前失败、修复后通过；错误脱敏复用显示 URI 的敏感参数规则，保留错误分类与诊断信息。
+补丁复查又发现相邻 URI 可能漏脱敏：先补失败断言，再修正扫描边界，使两个 URI 都能被处理。
+这些用例验证工具契约，不代表已经测得 Agent 端到端任务成功率的提升。
+验证记录：0.4.1 通过工作区测试（含临时 mongod）、fmt、clippy、9 项 Node 测试、13 项 Python 测试、
+Agent 集成及版本检查。Docker 与真实知识库两个可选测试未启用；Atlas 使用本地模拟服务。
+
+第二轮（2026-11-11）：从完整 URI 的脱敏扩展检查到驱动输入校验错误。
+驱动会单独回显解码后的错误参数片段，不能靠查找 URI 脱敏；固定校验提示在边界阻断回显。
+新增单元测试及真实 CLI 测试覆盖环境变量、stdin、百分号编码，并确认失败不修改配置、不保存凭据。
+定向更新间接依赖 chacha20 至 0.10.2，清除上一轮安装时发现的撤回版本警告。
+验证记录：0.4.2 通过工作区测试（含临时 mongod）、fmt、clippy、9 项 Node 测试、13 项 Python 测试、
+Agent 集成及版本检查；Docker 与真实知识库仍未启用，Atlas 仍使用本地模拟服务。
+
+第三轮（2026-11-11）：本地 Atlas stub 返回 expires_in=u64::MAX，真实 CLI 原本 panic，
+退出 101；改用 checked_add 后返回 incompatible_response（退出 7），不缓存 token、不继续业务请求。
+既有 token 复用和撤销测试继续覆盖正常值；极端输入验证信任边界，不代表真实 Atlas 会返回该值。
+同时补齐系统元数据的 gitignore。按用户要求，每轮验证完成后提交代码，推送和发布仍需单独授权。
+验证记录：0.4.3 通过工作区测试（含临时 mongod）、fmt、clippy、9 项 Node 测试、13 项 Python 测试、
+Agent 集成及版本检查；Docker 与真实知识库仍未启用，Atlas 使用本地模拟服务。
+本机 CLI 与独立 Skills 已刷新并核验。npm 冒烟首次因使用错误的测试变量名而选中旧产物；
+按脚本声明设置 MONGODB_CLI_TEST_BINARY 为本轮安装的二进制后通过，不将夹具版本错误计作产品缺陷。
+
+方法参考：[Darwin Gödel Machine](https://arxiv.org/abs/2505.22954) 的候选修改与实测验证，
+以及 [Agent evals](https://www.anthropic.com/research/demystifying-evals-for-ai-agents) 的失败样本积累与回归检查。
+
 ## Record changes as you work
 
 Add concise, user-facing entries under `CHANGELOG.md`'s `Unreleased` section using

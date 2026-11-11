@@ -84,6 +84,10 @@ Connections resolve in this order: `--profile`, `MONGODB_URI`, then the default 
 
 ### Credential store
 
+Invalid connection strings produce a fixed validation message asking you to check
+hosts, credentials, and options. Raw driver parser messages are omitted because
+they can contain decoded secret values, even without a complete URI.
+
 Connection strings that carry a password or another secret, and Atlas credentials, live in a credential store. `config set credential-store <store>` chooses it, and `MONGODB_CLI_CREDENTIAL_STORE` overrides the setting.
 
 | Store | Where credentials live | Prompts |

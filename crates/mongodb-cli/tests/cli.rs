@@ -126,6 +126,49 @@ fn menu_descriptions_stay_short() {
 }
 
 #[test]
+fn invalid_connection_options_do_not_leak_secrets_to_cli_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    let uri =
+        "mongodb://127.0.0.1:9/?authMechanismProperties=AWS_SESSION_TOKEN:prefix%2CTOP_SECRET";
+    let output = cli(&config)
+        .env("MONGODB_URI", uri)
+        .args(["--output", "json", "server", "info"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    let error = error_envelope(&output);
+    assert_eq!(error["error"]["code"], "config");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("TOP_SECRET"));
+
+    cli(&config)
+        .args(["profile", "add", "test"])
+        .assert()
+        .success();
+    let original_config = std::fs::read(&config).unwrap();
+    cli(&config)
+        .env("MONGODB_CLI_CREDENTIAL_STORE", "file")
+        .args([
+            "--profile",
+            "test",
+            "--output",
+            "json",
+            "auth",
+            "login",
+            "--uri-stdin",
+            "--no-verify",
+        ])
+        .write_stdin(uri)
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("invalid connection string"))
+        .stderr(predicate::str::contains("TOP_SECRET").not());
+    assert_eq!(std::fs::read(&config).unwrap(), original_config);
+    assert!(!directory.path().join("credentials.toml").exists());
+}
+
+#[test]
 fn version_and_usage_errors_follow_the_output_contract() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

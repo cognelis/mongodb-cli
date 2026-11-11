@@ -192,10 +192,12 @@ impl AtlasClient {
             .ok_or_else(|| incompatible("Atlas returned no access token"))?
             .to_owned();
         let lifetime = Duration::from_secs(body["expires_in"].as_u64().unwrap_or(0));
-        *slot = Some((
-            SecretString::from(token.clone()),
-            Instant::now() + lifetime.saturating_sub(TOKEN_MARGIN),
-        ));
+        let expires_at = Instant::now()
+            .checked_add(lifetime.saturating_sub(TOKEN_MARGIN))
+            .ok_or_else(|| {
+                incompatible("Atlas returned an access-token lifetime outside the supported range")
+            })?;
+        *slot = Some((SecretString::from(token.clone()), expires_at));
         Ok(token)
     }
 }

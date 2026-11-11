@@ -26,8 +26,10 @@ impl ConnectionUri {
         if value.chars().any(char::is_whitespace) {
             return Err("connection strings must not contain whitespace".into());
         }
-        ConnectionString::parse(value)
-            .map_err(|error| format!("invalid connection string: {}", scrub(&error.to_string())))?;
+        // Driver parse errors can echo decoded secrets without a URI for scrub to recognize.
+        ConnectionString::parse(value).map_err(|_| {
+            "invalid connection string: check hosts, credentials, and connection options".to_owned()
+        })?;
         Ok(Self {
             secret: SecretString::from(value.to_owned()),
             display: redact(value),
@@ -91,7 +93,7 @@ pub fn redact(uri: &str) -> String {
     format!("{scheme}://{hosts}{tail}")
 }
 
-/// Replace credentials in any connection string embedded in free text, such as a driver error.
+/// Remove credentials and secret options from connection strings embedded in driver errors.
 pub(crate) fn scrub(text: &str) -> String {
     const SCHEMES: [&str; 2] = ["mongodb+srv://", "mongodb://"];
     let mut result = String::with_capacity(text.len());
@@ -108,20 +110,25 @@ pub(crate) fn scrub(text: &str) -> String {
         };
         result.push_str(&rest[..start + scheme.len()]);
         let after_scheme = &rest[start + scheme.len()..];
-        let authority_end = after_scheme
-            .find(|character: char| {
-                matches!(character, '/' | '?' | '"' | '\'') || character.is_whitespace()
+        let uri_end = after_scheme
+            .char_indices()
+            .find(|(index, character)| {
+                matches!(character, '"' | '\'')
+                    || character.is_whitespace()
+                    || SCHEMES
+                        .iter()
+                        .any(|scheme| after_scheme[*index..].starts_with(scheme))
             })
+            .map(|(index, _)| index)
             .unwrap_or(after_scheme.len());
-        let authority = &after_scheme[..authority_end];
-        match authority.rsplit_once('@') {
-            Some((_, hosts)) => {
-                result.push_str("***@");
-                result.push_str(hosts);
-            }
-            None => result.push_str(authority),
+        let uri = &after_scheme[..uri_end];
+        let authority_end = uri.find(['/', '?']).unwrap_or(uri.len());
+        if uri[..authority_end].contains('@') {
+            result.push_str("***@");
         }
-        rest = &after_scheme[authority_end..];
+        let redacted = redact(&candidate[..scheme.len() + uri_end]);
+        result.push_str(&redacted[scheme.len()..]);
+        rest = &after_scheme[uri_end..];
     }
     result.push_str(rest);
     result
@@ -173,6 +180,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_errors_do_not_echo_invalid_secret_values() {
+        for query in [
+            "authMechanismProperties=AWS_SESSION_TOKEN:prefix,TOP_SECRET",
+            "authMechanismProperties=AWS_SESSION_TOKEN:prefix%2CTOP_SECRET",
+            "authMechanismPropertiesTOP_SECRET",
+        ] {
+            let error = ConnectionUri::parse(&format!("mongodb://localhost/?{query}")).unwrap_err();
+            assert!(error.contains("invalid connection string"));
+            assert!(!error.contains("TOP_SECRET"), "{error}");
+        }
+    }
+
+    #[test]
+    fn scrub_removes_secret_options_from_embedded_uris() {
+        for option in SENSITIVE_OPTIONS {
+            for key in [option.to_string(), option.to_uppercase()] {
+                let text = format!(
+                    "连接失败 'mongodb://admin:password@db/app?{key}=TOP_SECRET&authSource=admin' and mongodb+srv://cluster.example/app?{key}=OTHER_SECRET"
+                );
+                assert_eq!(
+                    scrub(&text),
+                    "连接失败 'mongodb://***@db/app?authSource=admin' and mongodb+srv://cluster.example/app"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn scrub_replaces_embedded_credentials_only() {
         assert_eq!(
             scrub("failed: mongodb://admin:hunter2@db.example.com:27017/app timed out"),
@@ -183,5 +218,9 @@ mod tests {
             "'mongodb+srv://***@c.example.net' and mongodb://plain:27017"
         );
         assert_eq!(scrub("mongodb is fine"), "mongodb is fine");
+        assert_eq!(
+            scrub("mongodb://a:first@host/db,mongodb+srv://b:second@cluster/app"),
+            "mongodb://***@host/db,mongodb+srv://***@cluster/app"
+        );
     }
 }

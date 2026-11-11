@@ -5,6 +5,34 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-11
+
+### Fixed
+
+- Atlas token responses with an unrepresentable `expires_in` now fail with
+  `incompatible_response` (exit 7), instead of panicking while caching the token.
+
+## [0.4.2] - 2026-11-11
+
+### Security
+
+- Invalid connection strings now use a fixed validation message instead of
+  forwarding driver parser diagnostics, which can echo decoded secret values.
+  This covers environment connections and stdin login; exit codes are unchanged.
+
+### Fixed
+
+- Update the locked transitive `chacha20` dependency from the yanked 0.10.1 to
+  0.10.2, which fixes SSE4.1 instructions being used by its SSE2 RNG backend.
+
+## [0.4.1] - 2026-11-11
+
+### Security
+
+- Driver errors now remove secret-bearing URI query options as well as user
+  information, including authentication mechanism properties and TLS passwords.
+  Non-secret connection options and MongoDB error codes remain available.
+
 ## [0.4.0] - 2026-10-12
 
 ### Added
