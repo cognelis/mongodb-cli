@@ -5,6 +5,14 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-11
+
+### Fixed
+
+- Document pagination no longer emits a repeated or overflowed `nextOffset`, or
+  recommends retrying that offset. Partial data and `hasMore` are preserved;
+  warnings suggest narrowing the filter or using `documents export`.
+
 ## [0.5.1] - 2026-11-11
 
 ### Fixed

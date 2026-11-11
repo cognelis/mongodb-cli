@@ -185,3 +185,11 @@ are updated by `mongodb-cli skills install`.
 第六轮验收：0.5.1：工作区测试（含临时 mongod 的全索引 OR 与未索引分支拒绝）、9 项 Node 安装测试、14 项 Python 测试、fmt、clippy、Agent 集成及发布检查通过。 未实测生产服务及其他操作系统。
 
 本轮本地 CLI/Skills 已刷新，124 个安装文件与源码核对一致；两个 Rust 包的安装冒烟通过。按新提交规范记录动机、变更、验证与实际 Codex 署名，不推送或发布。
+
+## 第七轮 RSI：异常结果与诊断恢复
+
+将上一轮分页严格前进约束迁移到 MongoDB 文档分页：hasMore=true 的空结果以及 u32 偏移溢出，原先都会生成无法前进的 nextOffset 和错误的继续查询提示。集中计算可表示且递增的下一偏移，保留数据和 hasMore，改为提示收窄过滤或显式导出；合法上界和原有限制提示仍通过测试。
+
+第七轮验收：0.5.2：工作区测试（含临时 mongod）、9 项 Node 安装测试、14 项 Python 测试、fmt/clippy、Agent 集成及版本检查通过。Docker 与真实知识库可选测试未启用。 未实测生产服务及其他操作系统。
+
+本轮 CLI 与 Skills 已更新，124 个安装文件与源码逐一核对，两个 Rust npm tarball 冒烟通过。Langfuse 安装后的坏配置诊断和路径定位也通过隔离配置验证。按新规范提交，不推送或发布。

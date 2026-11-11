@@ -1,5 +1,5 @@
 ---
-version: 0.5.1
+version: 0.5.2
 name: mongodb-cli-qe-size-estimation
 license: Apache-2.0
 metadata:

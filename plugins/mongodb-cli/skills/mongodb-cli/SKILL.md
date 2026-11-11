@@ -1,5 +1,5 @@
 ---
-version: 0.5.1
+version: 0.5.2
 name: mongodb-cli
 description: Load this before running any mongodb-cli command - it holds the profile rules (test vs production), page caps, and output shapes that --help lacks. Covers MongoDB databases, collections, documents (count, find, aggregate, export), schemas, indexes, explain plans, and guarded writes. Use it for MongoDB data questions and scripts; when the MongoDB MCP server is configured, prefer its tools.
 ---
@@ -195,6 +195,8 @@ mongodb-cli --profile "$profile" --output json documents find shop orders \
 | Indexes and plans | `mongodb-cli --profile <p> --output json indexes list <db> <coll>`, then `explain find <db> <coll> --filter '<json>'` |
 
 `data` is an array of documents for `find` and `aggregate` and `{"count": N}` for `count`; page state is in `meta` (`hasMore`, `nextOffset`, `total`). A page that ends before the results do adds a `partial results` warning to `meta.warnings`, or to stderr with `--raw`. Count and group on the server with `documents count` or `$count`/`$group` instead of counting a page.
+
+If `hasMore` is true but `nextOffset` is absent with a cannot-advance warning, do not repeat the current offset or invent a continuation. Narrow the filter, or use `documents export` when the user requested the complete result.
 
 ## Supported commands
 

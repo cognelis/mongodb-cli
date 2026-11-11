@@ -1847,6 +1847,11 @@ fn byte_limit(
 
 fn paged(page: PageRequest, limits: PageLimits, result: Page) -> (Value, Meta) {
     let returned = u32::try_from(result.documents.len()).unwrap_or(u32::MAX);
+    let next_offset = result
+        .has_more
+        .then_some(returned)
+        .and_then(|returned| page.offset.checked_add(returned))
+        .filter(|next| *next > page.offset);
     let mut warnings = result.warnings;
     if limits.documents.is_some() {
         warnings.push(format!(
@@ -1856,13 +1861,16 @@ fn paged(page: PageRequest, limits: PageLimits, result: Page) -> (Value, Meta) {
     }
     // A short page is easy to mistake for the whole result, so say so even without the envelope.
     if result.has_more {
-        let next = page.offset.saturating_add(returned);
         // A larger --limit helps only when no cap cut this page and the limit is below the cap.
         let cut_short = limits.documents.is_some() || (limits.bytes.is_some() && result.truncated);
-        let continuation = if limits.can_raise_limit && !cut_short {
-            format!("continue with --offset {next} or raise --limit")
-        } else {
-            format!("continue with --offset {next}")
+        let continuation = match next_offset {
+            Some(next) if limits.can_raise_limit && !cut_short => {
+                format!("continue with --offset {next} or raise --limit")
+            }
+            Some(next) => format!("continue with --offset {next}"),
+            None => {
+                "cannot advance offset pagination; narrow the filter or use documents export".into()
+            }
         };
         warnings.push(match result.total {
             Some(total) => {
@@ -1876,9 +1884,7 @@ fn paged(page: PageRequest, limits: PageLimits, result: Page) -> (Value, Meta) {
         offset: Some(page.offset),
         total: result.total,
         has_more: Some(result.has_more),
-        next_offset: result
-            .has_more
-            .then(|| page.offset.saturating_add(returned)),
+        next_offset,
         applied_limits: limits
             .documents
             .into_iter()
@@ -2880,6 +2886,55 @@ mod tests {
                 "{response} {configured}"
             );
         }
+    }
+
+    #[test]
+    fn pages_do_not_advertise_nonadvancing_or_overflowing_offsets() {
+        for (offset, documents) in [(4, vec![]), (u32::MAX, vec![json!({})])] {
+            let page = PageRequest {
+                limit: 1,
+                offset,
+                max_bytes: 100,
+                count_time_cap: Duration::from_secs(1),
+            };
+            let (_, meta) = paged(
+                page,
+                PageLimits::default(),
+                Page {
+                    documents,
+                    has_more: true,
+                    ..Page::default()
+                },
+            );
+            assert_eq!(meta.has_more, Some(true));
+            assert_eq!(meta.next_offset, None);
+            assert!(
+                meta.warnings
+                    .iter()
+                    .any(|warning| warning.contains("cannot advance"))
+            );
+            assert!(
+                meta.warnings
+                    .iter()
+                    .all(|warning| !warning.contains("continue with --offset"))
+            );
+        }
+        let page = PageRequest {
+            limit: 1,
+            offset: u32::MAX - 1,
+            max_bytes: 100,
+            count_time_cap: Duration::from_secs(1),
+        };
+        let (_, meta) = paged(
+            page,
+            PageLimits::default(),
+            Page {
+                documents: vec![json!({})],
+                has_more: true,
+                ..Page::default()
+            },
+        );
+        assert_eq!(meta.next_offset, Some(u32::MAX));
     }
 
     #[test]

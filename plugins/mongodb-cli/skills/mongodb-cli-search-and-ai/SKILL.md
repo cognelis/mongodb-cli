@@ -1,5 +1,5 @@
 ---
-version: 0.5.1
+version: 0.5.2
 name: mongodb-cli-search-and-ai
 description: Build Atlas Search (full-text, autocomplete, fuzzy, facets), Vector Search (embeddings, RAG), and hybrid search with the mongodb-cli executable, including contains-style or case-insensitive text matching across fields. If the MongoDB MCP server is configured and mongodb-cli was not requested, use the official mongodb-search-and-ai skill.
 license: Apache-2.0
