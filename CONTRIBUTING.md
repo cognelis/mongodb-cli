@@ -65,6 +65,14 @@ Agent 集成及版本检查；Docker 与真实知识库仍未启用，Atlas 使�
 本机 CLI 与独立 Skills 已刷新并核验。npm 冒烟首次因使用错误的测试变量名而选中旧产物；
 按脚本声明设置 MONGODB_CLI_TEST_BINARY 为本轮安装的二进制后通过，不将夹具版本错误计作产品缺陷。
 
+第四轮（2026-11-11）：导出原先用 File::create 打开固定的目标.tmp-PID，失败后还会删除该路径。
+预放同名无关文件的回归用例在原实现失败，证明会覆盖并删除不属于本次导出的文件。
+复用已有 tempfile::NamedTempFile 独占创建并原子替换，失败自动清理。真实临时 mongod 测试覆盖
+成功覆盖旧导出、相对路径、Unix 私有权限和失败后的目录完整性；不引入新依赖。
+0.4.4 验收：工作区测试（含临时 mongod）、fmt、clippy、9 项 Node 测试、13 项 Python 测试、
+Agent 集成及版本检查通过。Docker 与真实知识库未启用，未验证 Windows 文件语义。
+本机 CLI 与独立 Skills 已刷新并核验，指定 0.4.4 二进制的 npm tarball 冒烟检查通过。
+
 方法参考：[Darwin Gödel Machine](https://arxiv.org/abs/2505.22954) 的候选修改与实测验证，
 以及 [Agent evals](https://www.anthropic.com/research/demystifying-evals-for-ai-agents) 的失败样本积累与回归检查。
 

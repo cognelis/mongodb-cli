@@ -5,6 +5,17 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-11
+
+### Security
+
+- File exports use exclusively created temporary files instead of predictable
+  PID-based paths, preventing existing files or symlink targets from being
+  overwritten during staging. Failed exports clean up only their own temporary
+  file; successful exports remain atomic and use owner-only permissions on Unix.
+  Workflows that intentionally share exported files must grant the required
+  permissions explicitly after exporting.
+
 ## [0.4.3] - 2026-11-11
 
 ### Fixed

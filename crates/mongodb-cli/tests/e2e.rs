@@ -566,6 +566,7 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
         ("relaxed", json!(0)),
     ] {
         let path = directory.join(format!("export-{format}.json"));
+        std::fs::write(&path, "old export").unwrap();
         let written = session.ok(
             "read-only",
             &[
@@ -588,9 +589,48 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
         let file: Vec<Value> = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(file.len(), 150);
         assert_eq!(file[0]["n"], first, "{format}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o077,
+                0
+            );
+        }
     }
+    let relative = session
+        .command("read-only")
+        .current_dir(directory)
+        .args([
+            "documents",
+            "export",
+            db,
+            "big",
+            "--limit",
+            "1",
+            "--out",
+            "relative-export.json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        relative.status.success(),
+        "{}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+    let file: Vec<Value> =
+        serde_json::from_slice(&std::fs::read(directory.join("relative-export.json")).unwrap())
+            .unwrap();
+    assert_eq!(file.len(), 1);
     // A failed export leaves neither the file nor its temporary copy behind.
     let failed = directory.join("failed.json");
+    let filenames = || {
+        std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = filenames();
     session.fails(
         "read-only",
         &[
@@ -605,12 +645,7 @@ fn run_limits_and_export_scenario(session: &Session<'_>, db: &str, directory: &P
         ],
         5,
     );
-    let leftovers: Vec<_> = std::fs::read_dir(directory)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|name| name.starts_with("failed.json"))
-        .collect();
-    assert!(leftovers.is_empty(), "{leftovers:?}");
+    assert_eq!(filenames(), before);
 
     // --require-index refuses a collection scan and passes once an index exists.
     let filter = r#"{"n": 7}"#;

@@ -1890,29 +1890,26 @@ async fn export_to_file(
     canonical: bool,
     path: &Path,
 ) -> Result<u64, AppError> {
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(format!(".tmp-{}", std::process::id()));
-    let temporary = PathBuf::from(temporary);
     let unwritable = |path: &Path, error: io::Error| {
         AppError::validation(format!("cannot write {}: {error}", path.display()))
     };
-    let mut file = io::BufWriter::new(
-        fs::File::create(&temporary).map_err(|error| unwritable(&temporary, error))?,
-    );
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| unwritable(path, error))?;
+    let mut file = io::BufWriter::new(temporary.as_file_mut());
     let exported = client
         .export(database, collection, source, canonical, &mut file)
         .await;
-    // Close the file before renaming or removing it.
+    // Release the buffered writer before persisting the temporary file.
     drop(file);
-    let result = exported.map_err(AppError::from).and_then(|documents| {
-        fs::rename(&temporary, path)
-            .map(|()| documents)
-            .map_err(|error| unwritable(path, error))
-    });
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    let documents = exported.map_err(AppError::from)?;
+    temporary
+        .persist(path)
+        .map_err(|error| unwritable(path, error.error))?;
+    Ok(documents)
 }
 
 fn new_index(
@@ -2031,6 +2028,36 @@ mod tests {
     use clap::Parser;
 
     use super::*;
+
+    #[tokio::test]
+    async fn failed_exports_preserve_existing_files_and_remove_only_their_own_temporary_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.json");
+        let legacy_temporary = directory
+            .path()
+            .join(format!("export.json.tmp-{}", std::process::id()));
+        fs::write(&path, "original export").unwrap();
+        fs::write(&legacy_temporary, "unrelated file").unwrap();
+        let uri = mongodb_client::ConnectionUri::parse("mongodb://127.0.0.1:9").unwrap();
+        let client = MongoClient::connect(&uri, Duration::from_millis(50))
+            .await
+            .unwrap();
+        let source = ExportSource::Find {
+            query: Box::default(),
+            limit: None,
+        };
+        assert!(
+            export_to_file(&client, "test", "items", source, false, &path)
+                .await
+                .is_err()
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original export");
+        assert_eq!(
+            fs::read_to_string(&legacy_temporary).unwrap(),
+            "unrelated file"
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 2);
+    }
 
     fn cli(arguments: &[&str]) -> Cli {
         Cli::try_parse_from(std::iter::once("mongodb-cli").chain(arguments.iter().copied()))
