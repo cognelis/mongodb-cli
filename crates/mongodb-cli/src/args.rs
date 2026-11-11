@@ -542,11 +542,8 @@ pub enum DocumentsCommand {
     Update {
         database: String,
         collection: String,
-        /// Select documents with a JSON query.
-        ///
-        /// Required; pass {} to update every document.
-        #[arg(long)]
-        filter: String,
+        #[command(flatten)]
+        filter: WriteFilterArgs,
         /// Set the update as JSON.
         ///
         /// An update document such as {"$set": {"status": "done"}}, or an array of pipeline stages.
@@ -569,11 +566,8 @@ pub enum DocumentsCommand {
     Delete {
         database: String,
         collection: String,
-        /// Select documents with a JSON query.
-        ///
-        /// Required; pass {} to delete every document.
-        #[arg(long)]
-        filter: String,
+        #[command(flatten)]
+        filter: WriteFilterArgs,
     },
 }
 
@@ -610,6 +604,19 @@ pub enum ExplainCommand {
         #[command(flatten)]
         verbosity: VerbosityArgs,
     },
+}
+
+#[derive(Clone, Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct WriteFilterArgs {
+    /// Select documents with a JSON query.
+    ///
+    /// Pass {} explicitly to match every document.
+    #[arg(long)]
+    pub filter: Option<String>,
+    /// Read a filter from a file or stdin (-).
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub filter_file: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Args)]

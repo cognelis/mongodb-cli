@@ -287,13 +287,15 @@ fn run_scenario(session: &Session<'_>, db: &str) {
     let update_dir = tempfile::tempdir().unwrap();
     let update_path = update_dir.path().join("update.json");
     std::fs::write(&update_path, r#"{"$set": {"n": 10}}"#).unwrap();
+    let filter_path = update_dir.path().join("filter.json");
+    std::fs::write(&filter_path, r#"{"name": "a"}"#).unwrap();
     let update_args = [
         "documents",
         "update",
         db,
         "users",
-        "--filter",
-        r#"{"name": "a"}"#,
+        "--filter-file",
+        filter_path.to_str().unwrap(),
         "--update-file",
         update_path.to_str().unwrap(),
     ];
@@ -414,18 +416,19 @@ fn run_scenario(session: &Session<'_>, db: &str) {
         "read-write",
         &["indexes", "drop", db, "users", "n_1_name_-1", "--yes"],
     );
-    let deleted = session.ok(
-        "read-write",
-        &[
-            "documents",
-            "delete",
-            db,
-            "users",
-            "--filter",
-            r#"{"n": {"$lt": 3}}"#,
-            "--yes",
-        ],
-    );
+    let delete_filter = update_dir.path().join("delete-filter.json");
+    std::fs::write(&delete_filter, r#"{"n": {"$lt": 3}}"#).unwrap();
+    let delete_args = [
+        "documents",
+        "delete",
+        db,
+        "users",
+        "--filter-file",
+        delete_filter.to_str().unwrap(),
+    ];
+    session.fails("read-only", &[&delete_args[..], &["--yes"]].concat(), 3);
+    session.fails("read-write", &delete_args, 2);
+    let deleted = session.ok("read-write", &[&delete_args[..], &["--yes"]].concat());
     assert_eq!(deleted["data"]["deletedCount"], 1);
     session.ok(
         "read-write",

@@ -169,3 +169,82 @@ fn update_file_and_stdin_share_inline_parsing() {
             .stdout("");
     }
 }
+
+#[test]
+fn write_filters_can_use_files_or_stdin_without_silently_broadening_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("broken.toml");
+    std::fs::write(&config, "bad = [").unwrap();
+    let filter = r#"{"id":{"$numberLong":"9007199254740993"}}"#;
+    let file = dir.path().join("filter.json");
+    std::fs::write(&file, filter).unwrap();
+    for action in ["update", "delete"] {
+        let mut base = vec!["documents", action, "app", "items"];
+        if action == "update" {
+            base.extend(["--update", r#"{"$set":{"active":true}}"#]);
+        }
+        let inline = cli(&config)
+            .args(&base)
+            .args(["--filter", filter])
+            .output()
+            .unwrap();
+        assert!(inline.status.success());
+        for source in [file.to_str().unwrap(), "-"] {
+            let output = cli(&config)
+                .args(&base)
+                .args(["--filter-file", source])
+                .write_stdin(filter)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+                serde_json::from_slice::<Value>(&inline.stdout).unwrap()
+            );
+        }
+        cli(&config).args(&base).assert().code(2).stdout("");
+        cli(&config)
+            .args(&base)
+            .args(["--filter", "{}", "--filter-file", "-"])
+            .write_stdin(filter)
+            .assert()
+            .code(2)
+            .stdout("");
+        cli(&config)
+            .args(&base)
+            .arg("--filter-file")
+            .arg(dir.path().join("missing.json"))
+            .assert()
+            .code(2)
+            .stdout("");
+        for invalid in ["", "null", "[]", "{"] {
+            cli(&config)
+                .args(&base)
+                .args(["--filter-file", "-"])
+                .write_stdin(invalid)
+                .assert()
+                .code(2)
+                .stdout("");
+        }
+    }
+    cli(&config)
+        .args([
+            "documents",
+            "update",
+            "app",
+            "items",
+            "--filter-file",
+            "-",
+            "--update-file",
+            "-",
+        ])
+        .write_stdin("{}")
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("cannot both read stdin"));
+}

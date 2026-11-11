@@ -201,7 +201,7 @@ The disabled-tools, access, server-side JavaScript, and `--yes` checks run in th
 
 - New profiles are read-only. `profile add <name> --access read-write` creates a writable profile. An environment connection is read-only unless `MONGODB_CLI_ACCESS=read-write` is set.
 - On a read-only connection, every write exits 3 (`forbidden`). Writes are `documents insert|update|delete`, `collections create|rename|drop`, `indexes create|drop`, `databases drop`, and aggregations containing `$out` or `$merge`, including `explain aggregate` of such a pipeline.
-- `documents update` and `documents delete` require `--filter`; pass `{}` deliberately to target every document.
+- `documents update` and `documents delete` require `--filter` or `--filter-file`; pass `{}` deliberately to target every document.
 - The CLI's read-only mode is a safeguard, not a substitute for database privileges. Prefer a database user with only the `read` role for production. `doctor`, `auth check`, and `auth login` warn when a read-only connection's user has write-capable roles.
 
 ### Confirmation with `--yes`
@@ -543,7 +543,7 @@ Every tool of the MongoDB MCP server 3.0.5 maps to a command. The tool names are
 ### Intentional differences
 
 - **Read-only by default.** Profiles and environment connections refuse writes until a person opts in; the MCP server allows writes unless it runs with `readOnly`.
-- **Required filters.** `documents update` and `documents delete` require `--filter`, where the MCP server's `update-many` and `delete-many` default to every document.
+- **Required filters.** `documents update` and `documents delete` require an explicit filter (`--filter` or `--filter-file`), where the MCP server's `update-many` and `delete-many` default to every document.
 - **Wider `--yes`.** The MCP server confirms only `drop-database`, `drop-collection`, `delete-many`, `drop-index`, `atlas-create-access-list`, `atlas-create-db-user`, `atlas-streams-manage`, and `atlas-streams-teardown` by default, and only when the client supports elicitation. The CLI always requires `--yes` for those and also for `collections rename --drop-target`, `$out`/`$merge` aggregations, every other Atlas change, and the `local` deletions and profile replacements listed above.
 - **Atlas tools off by default.** All 28 Atlas, Atlas Local, and assistant tools stay disabled until enabled with `config set atlas-tools enabled` or `MONGODB_CLI_ATLAS_TOOLS`.
 - **Offset paging.** `documents find`, `documents aggregate`, and `databases aggregate` add `--offset` with `meta.hasMore` and `meta.nextOffset`, where the MCP server returns one page and suggests an export.
@@ -668,8 +668,24 @@ cat update.json | mongodb-cli documents update app orders --filter '{"status":"f
 
 `update.json` contains an update document such as `{"$set":{"reviewed":true}}`
 or an array of update pipeline stages, using Extended JSON for BSON types.
-Provide exactly one of `--update` and `--update-file`; `--filter` remains required.
+Provide exactly one of `--update` and `--update-file`; a filter (`--filter` or `--filter-file`) remains required.
 The same parser and access, confirmation, JavaScript, and index guards apply
 when executing. After reviewing and authorizing the change, reuse the unchanged
 file and filter and remove `--dry-run`. Files are read again on each invocation;
 the preview does not lock their contents or the matched database records.
+
+### Reuse an exact write filter from a file
+
+```sh
+mongodb-cli documents update app orders --filter-file filter.json --update-file update.json --dry-run --output json
+mongodb-cli documents delete app orders --filter-file filter.json --dry-run --output json
+```
+
+`filter.json` must contain one Extended JSON object, for example
+`{"status":"failed"}`. Supply exactly one of `--filter` and `--filter-file`;
+an empty or unreadable file is an error, never an implicit `{}`. `--filter-file -`
+reads stdin, but update and filter cannot both use stdin in the same command.
+Review the parsed plan and reuse the unchanged files after normal preflight and
+write authorization. Files are read again per invocation and do not freeze the
+matching documents. Read-only, confirmation, index and JavaScript guards still
+apply; this option is limited to document update/delete.

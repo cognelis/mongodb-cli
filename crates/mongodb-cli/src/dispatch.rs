@@ -1266,19 +1266,28 @@ impl Operation {
                     update,
                     update_file,
                     upsert,
-                } => Self::DocumentsUpdate {
-                    database: non_empty(database, "database")?,
-                    collection: non_empty(collection, "collection")?,
-                    filter: ejson::parse_document(filter, "--filter")?,
-                    update: match (update, update_file) {
-                        (Some(text), _) => ejson::parse_update(text, "--update")?,
-                        (None, Some(path)) => {
-                            ejson::parse_update(&read_input(path)?, "--update-file")?
-                        }
-                        (None, None) => unreachable!("clap requires --update or --update-file"),
-                    },
-                    upsert: *upsert,
-                },
+                } => {
+                    if filter.filter_file.as_deref() == Some(Path::new("-"))
+                        && update_file.as_deref() == Some(Path::new("-"))
+                    {
+                        return Err(AppError::validation(
+                            "--filter-file and --update-file cannot both read stdin; use a file for one input",
+                        ));
+                    }
+                    Self::DocumentsUpdate {
+                        database: non_empty(database, "database")?,
+                        collection: non_empty(collection, "collection")?,
+                        filter: read_write_filter(filter)?,
+                        update: match (update, update_file) {
+                            (Some(text), _) => ejson::parse_update(text, "--update")?,
+                            (None, Some(path)) => {
+                                ejson::parse_update(&read_input(path)?, "--update-file")?
+                            }
+                            (None, None) => unreachable!("clap requires --update or --update-file"),
+                        },
+                        upsert: *upsert,
+                    }
+                }
                 DocumentsCommand::Delete {
                     database,
                     collection,
@@ -1286,7 +1295,7 @@ impl Operation {
                 } => Self::DocumentsDelete {
                     database: non_empty(database, "database")?,
                     collection: non_empty(collection, "collection")?,
-                    filter: ejson::parse_document(filter, "--filter")?,
+                    filter: read_write_filter(filter)?,
                 },
             },
             Command::Explain { command } => match command {
@@ -2064,6 +2073,14 @@ fn find_query(query: &QueryArgs) -> Result<FindQuery, AppError> {
 fn optional_document(text: Option<&str>, label: &str) -> Result<Option<Document>, AppError> {
     text.map(|text| ejson::parse_document(text, label).map_err(AppError::from))
         .transpose()
+}
+
+fn read_write_filter(arguments: &WriteFilterArgs) -> Result<Document, AppError> {
+    Ok(match (&arguments.filter, &arguments.filter_file) {
+        (Some(text), _) => ejson::parse_document(text, "--filter")?,
+        (None, Some(path)) => ejson::parse_document(&read_input(path)?, "--filter-file")?,
+        (None, None) => unreachable!("clap requires --filter or --filter-file"),
+    })
 }
 
 fn read_pipeline(arguments: &PipelineArgs) -> Result<Vec<Document>, AppError> {

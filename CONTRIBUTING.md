@@ -230,3 +230,11 @@ Skill 增加任务分流：本地维护直接使用离线命令，数据任务�
 验收：工作区测试（含临时 mongod）、9 项 Node 安装测试、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查及工作区 release 二进制 npm tarball 冒烟通过。Docker 与真实知识库可选测试未启用。完整回归曾发现新增参数帮助过长，缩短补全标题并保留长帮助后通过。
 
 本轮新增能力的用例均先在原实现确认失败，再完成实现与验证。保持 Unreleased，不递增版本，不刷新全局安装或插件。通用 Skill 校验器不接受项目既有的 version frontmatter 字段；保留 doctor 需要的字段，并使用仓库的 Skill/发布校验。未验证生产服务、其他操作系统及模型级 Skill 效果。
+
+## 第十一轮 RSI：聚合草稿、按需契约与写入过滤文件
+
+新增写入专用 --filter-file，update/delete 复用同一必选互斥组与 EJSON 解析器。拒绝缺失/非法文件，不隐式扩大到全量；更新和过滤不能同时从 stdin 读取。Skill 补充成对文件审阅与内容变动后重新审阅的流程。
+
+验收：工作区测试（含临时 mongod）、9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查和 npm tarball 冒烟通过。验证 inline/file/stdin 一致、BSON 精度、缺失/空/非法文件、双 stdin 拒绝，以及文件更新/删除的只读和确认保护。Docker 与真实知识库可选测试未启用。
+
+新增行为的回归用例先在原实现确认失败，再通过实现和全量验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他平台和模型级 Skill 效果。

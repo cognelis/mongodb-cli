@@ -7,6 +7,11 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ### Added
 
+- `documents update|delete --filter-file <path|->` reads a required EJSON
+  filter from a file or stdin instead of `--filter`. Missing, conflicting, invalid
+  or unreadable filters fail without broadening scope. An update cannot read both
+  its filter and update from stdin. Existing write guards apply unchanged.
+
 - `documents update --update-file <path|->` reads an Extended JSON update
   document or pipeline from a file or stdin. It is mutually exclusive with
   `--update` and shares the same parsing, dry-run, and execution guards.
