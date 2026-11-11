@@ -631,3 +631,30 @@ Review local customizations before an intended `skills install`, verify status
 again afterward, then reload the agent context. File alignment does not prove
 that the running agent loaded the new Skill. Doctor remains the connection and
 version overview; this command provides per-file installation detail.
+
+## Unreleased: review document write intent offline
+
+```sh
+mongodb-cli documents update app orders --filter '{"status":"failed"}' --update '{"$set":{"reviewed":true}}' --dry-run --output json
+mongodb-cli documents delete app orders --filter '{"expired":true}' --dry-run --output json
+mongodb-cli documents insert app orders --documents '{"name":"draft"}' --dry-run --output json
+```
+
+These previews return `documents.plan` without loading credentials, connecting,
+or changing data. Canonical Extended JSON preserves BSON types. Inspect the
+namespace, filter, update/documents, `emptyFilter`, `requiresWriteAccess`,
+`requiresYesByDefault`, and any `serverSideJavaScript` marker. `requestedProfile`
+is only the name supplied on the command line, not a verified connection.
+
+`validation: local_shape_only` means JSON/EJSON and input shapes were parsed;
+operators, server compatibility, profile rules, authorization, index use, and
+matched counts have not been checked. `emptyFilter` describes literal `{}`;
+a nonempty filter can still match all documents. Custom profile rules may add
+confirmation requirements beyond `requiresYesByDefault`.
+
+Only insert/update/delete support `--dry-run`; other commands fail before side
+effects. After selecting the intended profile and running doctor, use a read-only
+count/query to assess the filter when needed. Execution still needs existing
+read-write access and confirmation guards. A preview grants no authorization,
+and `--yes --dry-run` still never performs the write. Supplied values appear in
+the plan; review them before retaining or sharing it.

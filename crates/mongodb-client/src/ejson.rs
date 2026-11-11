@@ -39,6 +39,22 @@ pub fn parse_documents(text: &str, label: &str) -> Result<Vec<Document>, ClientE
     }
 }
 
+/// Parse the document or pipeline shape accepted by update_many.
+pub fn parse_update(text: &str, label: &str) -> Result<Bson, ClientError> {
+    let value = parse_value(text, label)?;
+    match &value {
+        Bson::Document(_) => {}
+        Bson::Array(items) if items.iter().all(|item| matches!(item, Bson::Document(_))) => {}
+        _ => {
+            return Err(invalid(
+                label,
+                "expected an update document or an array of pipeline objects".into(),
+            ));
+        }
+    }
+    Ok(value)
+}
+
 /// Convert BSON to relaxed Extended JSON, the format used by mongosh and the MongoDB MCP server.
 pub fn to_json(value: Bson) -> Value {
     value.into_relaxed_extjson()
@@ -113,6 +129,24 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn updates_require_documents_or_document_pipelines() {
+        assert!(matches!(
+            parse_update(r#"{"$set":{"a":1}}"#, "--update").unwrap(),
+            Bson::Document(_)
+        ));
+        assert!(matches!(
+            parse_update(r#"[{"$set":{"a":1}}]"#, "--update").unwrap(),
+            Bson::Array(_)
+        ));
+        for text in ["null", "1", "[1]", "[{}, false]"] {
+            assert_eq!(
+                parse_update(text, "--update").unwrap_err().code(),
+                ErrorCode::Validation
+            );
+        }
     }
 
     #[test]

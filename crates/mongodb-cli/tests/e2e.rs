@@ -196,6 +196,27 @@ fn run_scenario(session: &Session<'_>, db: &str) {
     assert_eq!(inserted["data"]["insertedCount"], 3);
     assert!(inserted["data"]["insertedIds"][0]["$oid"].is_string());
 
+    let preview = session.ok(
+        "read-write",
+        &[
+            "--yes",
+            "--dry-run",
+            "documents",
+            "delete",
+            db,
+            "users",
+            "--filter",
+            "{}",
+        ],
+    );
+    assert_eq!(preview["command"], "documents.plan");
+    assert_eq!(preview["data"]["executed"], false);
+    assert_eq!(preview["data"]["emptyFilter"], true);
+    assert_eq!(
+        session.ok("read-only", &["documents", "count", db, "users"])["data"]["count"],
+        3
+    );
+
     let first = session.ok(
         "read-only",
         &[

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
     name = "mongodb-cli",
     version,
     about = "Query and manage MongoDB from the command line",
-    after_help = "Coding agents: load the bundled mongodb-cli skill before the first command (install it with `mongodb-cli skills install`). Run `mongodb-cli profile list` on its own first and use a production profile only when the user asks for production. Database and collection names are positional arguments. A page holds at most 100 documents by default; page with --offset, and with --raw read stderr, where partial-result warnings go."
+    after_help = "Coding agents: load the bundled mongodb-cli skill before the first command (install it with `mongodb-cli skills install`). Before data execution, run `mongodb-cli profile list` on its own first and use a production profile only when the user asks for production. Database and collection names are positional arguments. A page holds at most 100 documents by default; page with --offset, and with --raw read stderr, where partial-result warnings go."
 )]
 pub struct Cli {
     /// Select a saved environment.
@@ -33,6 +33,9 @@ pub struct Cli {
     /// Confirm destructive or billable operations.
     #[arg(long, global = true)]
     pub yes: bool,
+    /// Preview document writes without executing.
+    #[arg(long, global = true)]
+    pub dry_run: bool,
     /// Refuse queries that scan the collection.
     ///
     /// Check the query plan first and refuse finds, counts, aggregations, updates, and deletes that would not use an index.

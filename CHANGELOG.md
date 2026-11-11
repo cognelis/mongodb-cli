@@ -5,6 +5,21 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
+### Added
+
+- `documents insert|update|delete --dry-run` prints an unexecuted write-intent
+  plan without loading connection credentials or contacting MongoDB. Canonical
+  Extended JSON preserves BSON types. Plans flag empty filters, baseline write/
+  confirmation requirements, and server-side JavaScript; profile permissions,
+  index checks, server validation, and matched counts remain explicitly unchecked.
+- Unsupported commands with `--dry-run` fail before any command side effects.
+
+### Fixed
+
+- Update inputs must be a document or an array of pipeline documents before
+  connection resolution, shared by preview and execution paths.
+
+
 ## [0.6.0] - 2026-11-11
 
 ### Added

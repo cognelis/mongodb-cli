@@ -28,3 +28,8 @@
 - This project now permits commit bodies and actual-participant `Co-authored-by` trailers, superseding the old single-line/no-trailer rule. Keep titles without a scope.
 - Use `dnvyrn <dnvyrn@gamil.com>` for subsequent human-authored commits. Do not rewrite history.
 - Credit Codex and/or Claude only when they actually participated. A completed RSI round must be verified and committed; do not infer push/tag/publish authorization from that.
+
+## RSI release batching
+
+- RSI rounds are Unreleased drafts unless the user asks to prepare a release batch. Validate and commit each round, but do not increment versions per round. This uses the unreleased-draft exception above.
+- At release preparation, consolidate the pending changes and choose one appropriate product increment. Do not rewrite published tags or releases.

@@ -9,11 +9,15 @@ description: Load this before running any mongodb-cli command - it holds the pro
 ## Choose the next step
 
 - **Local installation or Skill maintenance:** run `mongodb-cli skills status --target codex --output json` (or `--target claude` / `all`). This is offline and read-only; it needs no profile selection, credentials, or doctor preflight.
-- **Data investigation or changes:** follow the environment-selection and doctor rules below before the first data operation. Production and write permissions still require the user's stated intent.
+- **Data execution:** follow the environment-selection and doctor rules below before the first data operation. Production and write permissions still require the user's stated intent.
 - **After a CLI upgrade:** inspect `changedFiles`, `missingFiles`, and `unreadableFiles` before refreshing Skills. If managed files contain intentional local edits, review them before running `skills install`; do not silently overwrite customizations. Unmanaged files are ignored and preserved.
 - **After an intended refresh:** run `skills status` again, then reload the agent context. `current` proves managed file contents match this CLI's bundle; it does not prove the agent has loaded them.
 
 `skills status` reports `current`, `different`, `missing` (no SKILL.md), or `unreadable`. It returns installed and bundled versions, paths, and relative file lists without printing file contents. Exit 0 means inspection completed, even if files differ; inspect `data[].status` for alignment.
+
+## Review document changes before execution
+
+`documents insert|update|delete --dry-run --output json` is local request planning, so it needs no connection or doctor preflight. Inspect the exact database/collection, canonical EJSON payload, `emptyFilter`, baseline access/confirmation requirements, and JavaScript marker. The result has `executed: false`; profile rules, index use, matched counts, and server validation are explicitly unchecked. A nonempty filter does not prove a small match set. Before real execution, select the user-intended profile, run doctor, and inspect/count matches when appropriate. Existing write authorization and `--yes` requirements still apply; preview alone grants no permission. Even `--yes --dry-run` performs no write.
 
 ## Doctor version checks
 

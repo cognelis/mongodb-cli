@@ -74,6 +74,24 @@ impl From<ClientError> for AppError {
 }
 
 pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
+    if cli.dry_run {
+        if !matches!(
+            &cli.command,
+            Command::Documents {
+                command: DocumentsCommand::Insert { .. }
+                    | DocumentsCommand::Update { .. }
+                    | DocumentsCommand::Delete { .. }
+            }
+        ) {
+            return Err(AppError::validation(
+                "--dry-run supports documents insert, update, and delete only",
+            ));
+        }
+        let operation = Operation::parse(&cli.command)?;
+        let mut plan = operation.write_plan()?;
+        plan["requestedProfile"] = json!(cli.profile);
+        return Ok(local("documents.plan", plan));
+    }
     match &cli.command {
         Command::Completion { shell } => {
             return Ok(local(
@@ -982,6 +1000,56 @@ enum Operation {
 }
 
 impl Operation {
+    fn write_plan(&self) -> Result<Value, AppError> {
+        let canonical = |value: Bson| value.into_canonical_extjson();
+        let (database, collection, request, empty_filter) = match self {
+            Self::DocumentsInsert {
+                database,
+                collection,
+                documents,
+            } => (
+                database,
+                collection,
+                json!({"documents": documents.iter().cloned().map(|doc| canonical(Bson::Document(doc))).collect::<Vec<_>>() }),
+                false,
+            ),
+            Self::DocumentsUpdate {
+                database,
+                collection,
+                filter,
+                update,
+                upsert,
+            } => (
+                database,
+                collection,
+                json!({"filter": canonical(Bson::Document(filter.clone())), "update": canonical(update.clone()), "upsert": upsert, "multi": true}),
+                filter.is_empty(),
+            ),
+            Self::DocumentsDelete {
+                database,
+                collection,
+                filter,
+            } => (
+                database,
+                collection,
+                json!({"filter": canonical(Bson::Document(filter.clone())), "multi": true}),
+                filter.is_empty(),
+            ),
+            _ => {
+                return Err(AppError::validation(
+                    "this operation has no document-write plan",
+                ));
+            }
+        };
+        Ok(
+            json!({"executed": false, "command": self.name(), "database": database, "collection": collection,
+            "request": request, "emptyFilter": empty_filter,
+            "requiresWriteAccess": self.writes(), "requiresYesByDefault": self.destructive(), "profileRulesChecked": false, "indexCheckPerformed": false,
+            "serverSideJavaScript": self.server_side_js(), "authorizationChecked": false,
+            "validation": "local_shape_only", "matchedCount": null}),
+        )
+    }
+
     fn parse(command: &Command) -> Result<Self, AppError> {
         Ok(match command {
             Command::Server { command } => match command {
@@ -1201,7 +1269,7 @@ impl Operation {
                     database: non_empty(database, "database")?,
                     collection: non_empty(collection, "collection")?,
                     filter: ejson::parse_document(filter, "--filter")?,
-                    update: ejson::parse_value(update, "--update")?,
+                    update: ejson::parse_update(update, "--update")?,
                     upsert: *upsert,
                 },
                 DocumentsCommand::Delete {
