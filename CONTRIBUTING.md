@@ -246,3 +246,11 @@ Skill 增加任务分流：本地维护直接使用离线命令，数据任务�
 验收：工作区回归（含临时 mongod）、9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本检查及 npm tarball 冒烟通过。验证读管道、$out/$merge 目标、EJSON 精度，以及带 --yes 的预览不创建目标集合，正式执行仍要求写权限和确认。Docker 与真实知识库可选测试未启用。
 
 新增用例均先在原实现确认失败，再完成实现与验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他操作系统或模型级 Skill 效果。
+
+## 第十三轮 RSI：固定历史窗口与一致的输入来源（2026-11-12）
+
+把 filter-file 扩展到 documents find/count/export 与 explain find/count，复用 EJSON 解析和文件读取，保持读取的省略过滤默认值及写入的显式过滤要求。禁止内联与文件同时输入、导出管道与过滤文件混用。Skill 引导用同一文件预检目标，再进行授权写入，避免重新拼写过滤条件。
+
+验收：工作区测试含临时 mongod，覆盖文件/标准输入计数、查询、执行计划、导出及后续写入；无效/缺失文件、冲突输入在连接前拒绝。9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本及 npm tarball 检查通过。Docker 与真实知识库可选测试未启用。Rust CLI 结构构造方需要适配 ReadFilterArgs，现有 CLI 参数用法保持兼容。
+
+新行为回归均先在原实现确认失败，再完成实现和验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他平台或模型级 Skill 效果。

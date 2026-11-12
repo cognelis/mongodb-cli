@@ -688,7 +688,7 @@ reads stdin, but update and filter cannot both use stdin in the same command.
 Review the parsed plan and reuse the unchanged files after normal preflight and
 write authorization. Files are read again per invocation and do not freeze the
 matching documents. Read-only, confirmation, index and JavaScript guards still
-apply; this option is limited to document update/delete.
+apply; read commands also support the same filter file as described below.
 
 ### Review an aggregation before it runs
 
@@ -710,3 +710,22 @@ stage/operator semantics, matched counts or permissions. Reuse the unchanged
 pipeline after normal preflight and authorization; write aggregation still
 requires read-write access and `--yes`. Database-level aggregation and other
 commands remain outside this preview capability.
+
+### Inspect the same filter before writing
+
+```sh
+mongodb-cli documents count app orders --filter-file filter.json --output json
+mongodb-cli documents find app orders --filter-file filter.json --limit 10 --output json
+mongodb-cli explain find app orders --filter-file filter.json --output json
+mongodb-cli documents export app orders --filter-file filter.json --out matched.json
+```
+
+`--filter-file` accepts the same EJSON object for reads and writes. It is supported
+by documents find/count/export and explain find/count as well as update/delete;
+`-` reads stdin. Read commands still default to `{}` when neither filter option
+is given. Explicit empty, malformed or unreadable files fail, and `--filter` plus
+`--filter-file` is refused. Export cannot combine a find filter with an aggregation
+`--pipeline`/`--file`. Profile limits, index/JavaScript checks and permissions remain
+unchanged. These are remote reads requiring normal preflight; count/find results
+are not a transaction snapshot or permission to write. Reuse the reviewed file
+and keep the selected profile/database/collection consistent.

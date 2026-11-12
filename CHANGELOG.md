@@ -7,6 +7,12 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ### Added
 
+- `--filter-file <path|->` now also supports documents find/count/export and
+  explain find/count. Read filters remain optional, but explicit invalid/unreadable
+  files fail rather than becoming `{}`. Inline/file inputs and export pipeline/filter
+  inputs are mutually exclusive. Rust CLI callers constructing `QueryArgs` or the
+  count command variants now wrap their filter in `ReadFilterArgs`.
+
 - `documents aggregate --dry-run` previews read and write pipelines offline.
   It reports canonical EJSON, `$out`/`$merge` write targets, baseline authorization
   requirements, JavaScript markers and requested paging. Write pipelines explicitly

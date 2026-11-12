@@ -289,6 +289,83 @@ fn run_scenario(session: &Session<'_>, db: &str) {
     std::fs::write(&update_path, r#"{"$set": {"n": 10}}"#).unwrap();
     let filter_path = update_dir.path().join("filter.json");
     std::fs::write(&filter_path, r#"{"name": "a"}"#).unwrap();
+    assert_eq!(
+        session.ok(
+            "read-only",
+            &[
+                "documents",
+                "count",
+                db,
+                "users",
+                "--filter-file",
+                filter_path.to_str().unwrap()
+            ]
+        )["data"]["count"],
+        1
+    );
+    assert_eq!(
+        session.ok(
+            "read-only",
+            &[
+                "documents",
+                "find",
+                db,
+                "users",
+                "--filter-file",
+                filter_path.to_str().unwrap()
+            ]
+        )["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    for kind in ["find", "count"] {
+        assert!(
+            session.ok(
+                "read-only",
+                &[
+                    "explain",
+                    kind,
+                    db,
+                    "users",
+                    "--filter-file",
+                    filter_path.to_str().unwrap()
+                ]
+            )["data"]["queryPlanner"]
+                .is_object()
+        );
+    }
+    let export_path = update_dir.path().join("matched.json");
+    let exported = session.ok(
+        "read-only",
+        &[
+            "documents",
+            "export",
+            db,
+            "users",
+            "--filter-file",
+            filter_path.to_str().unwrap(),
+            "--out",
+            export_path.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(exported["data"]["documents"], 1);
+    assert_eq!(
+        serde_json::from_str::<Value>(&std::fs::read_to_string(export_path).unwrap()).unwrap()[0]["name"],
+        "a"
+    );
+    let stdin_count = session
+        .command("read-only")
+        .args(["documents", "count", db, "users", "--filter-file", "-"])
+        .write_stdin(r#"{"name":"a"}"#)
+        .output()
+        .unwrap();
+    assert!(stdin_count.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&stdin_count.stdout).unwrap()["data"]["count"],
+        1
+    );
     let update_args = [
         "documents",
         "update",

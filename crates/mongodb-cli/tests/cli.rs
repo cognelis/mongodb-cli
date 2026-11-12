@@ -1303,3 +1303,72 @@ fn over_cap_limits_unknown_profiles_and_profile_databases() {
         "{message}"
     );
 }
+
+#[test]
+fn read_filter_files_reject_ambiguous_or_invalid_inputs_before_connecting() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("bad.json");
+    std::fs::write(&file, "[]").unwrap();
+    let cli = || {
+        let mut command = Command::cargo_bin("mongodb-cli").unwrap();
+        command
+            .env("MONGODB_CLI_CONFIG", dir.path().join("config.toml"))
+            .env("MONGODB_URI", "mongodb://127.0.0.1:9/");
+        command
+    };
+    for prefix in [
+        vec!["documents", "find"],
+        vec!["documents", "count"],
+        vec!["documents", "export"],
+        vec!["explain", "find"],
+        vec!["explain", "count"],
+    ] {
+        cli()
+            .args(&prefix)
+            .args(["app", "items", "--filter-file"])
+            .arg(&file)
+            .assert()
+            .code(2)
+            .stderr(predicates::str::contains(
+                "--filter-file: expected a JSON object",
+            ));
+        cli()
+            .args(&prefix)
+            .args(["app", "items", "--filter", "{}", "--filter-file", "-"])
+            .write_stdin("{}")
+            .assert()
+            .code(2)
+            .stdout("");
+        cli()
+            .args(&prefix)
+            .args(["app", "items", "--filter-file", "-"])
+            .write_stdin("null")
+            .assert()
+            .code(2)
+            .stdout("");
+        cli()
+            .args(&prefix)
+            .args(["app", "items", "--filter-file"])
+            .arg(dir.path().join("missing.json"))
+            .assert()
+            .code(2)
+            .stdout("");
+    }
+    for source in ["--pipeline", "--file"] {
+        cli()
+            .args([
+                "documents",
+                "export",
+                "app",
+                "items",
+                "--filter-file",
+                "-",
+                source,
+                "-",
+            ])
+            .write_stdin("{}")
+            .assert()
+            .code(2)
+            .stdout("");
+    }
+}

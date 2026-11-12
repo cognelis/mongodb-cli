@@ -73,6 +73,11 @@ async function main() {
     assert.equal(aggregatePlan.data.executed, false);
     assert.equal(aggregatePlan.data.pagingMode, 'unpaged_write');
     assert.deepEqual(aggregatePlan.data.writeTargets, ['$out replaces every document in app.archive']);
+    const invalidFilter = path.join(temporary, 'invalid-filter.json');
+    fs.writeFileSync(invalidFilter, '[]');
+    const rejectedFilter = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'count', 'app', 'items', '--filter-file', invalidFilter], {encoding: 'utf8', env: cliEnv});
+    assert.equal(rejectedFilter.status, 2);
+    assert.ok(JSON.parse(rejectedFilter.stderr).error.message.includes('--filter-file: expected a JSON object'));
     const invalid = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'find'], {encoding: 'utf8', env: cliEnv});
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout, '');

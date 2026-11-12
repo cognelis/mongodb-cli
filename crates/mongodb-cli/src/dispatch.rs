@@ -1210,7 +1210,7 @@ impl Operation {
                 } => Self::DocumentsCount {
                     database: non_empty(database, "database")?,
                     collection: non_empty(collection, "collection")?,
-                    filter: optional_document(filter.as_deref(), "--filter")?.unwrap_or_default(),
+                    filter: read_filter(filter)?,
                 },
                 DocumentsCommand::Export {
                     database,
@@ -1350,7 +1350,7 @@ impl Operation {
                 } => Self::ExplainCount {
                     database: non_empty(database, "database")?,
                     collection: non_empty(collection, "collection")?,
-                    filter: optional_document(filter.as_deref(), "--filter")?.unwrap_or_default(),
+                    filter: read_filter(filter)?,
                     verbosity: explain_verbosity(verbosity),
                 },
             },
@@ -2082,7 +2082,7 @@ fn new_index(
 
 fn find_query(query: &QueryArgs) -> Result<FindQuery, AppError> {
     Ok(FindQuery {
-        filter: optional_document(query.filter.as_deref(), "--filter")?.unwrap_or_default(),
+        filter: read_filter(&query.filter)?,
         projection: optional_document(query.projection.as_deref(), "--projection")?,
         sort: optional_document(query.sort.as_deref(), "--sort")?,
     })
@@ -2091,6 +2091,14 @@ fn find_query(query: &QueryArgs) -> Result<FindQuery, AppError> {
 fn optional_document(text: Option<&str>, label: &str) -> Result<Option<Document>, AppError> {
     text.map(|text| ejson::parse_document(text, label).map_err(AppError::from))
         .transpose()
+}
+
+fn read_filter(arguments: &ReadFilterArgs) -> Result<Document, AppError> {
+    Ok(match (&arguments.filter, &arguments.filter_file) {
+        (Some(text), _) => ejson::parse_document(text, "--filter")?,
+        (None, Some(path)) => ejson::parse_document(&read_input(path)?, "--filter-file")?,
+        (None, None) => Document::new(),
+    })
 }
 
 fn read_write_filter(arguments: &WriteFilterArgs) -> Result<Document, AppError> {

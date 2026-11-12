@@ -490,9 +490,8 @@ pub enum DocumentsCommand {
     Count {
         database: String,
         collection: String,
-        /// Filter with a JSON query.
-        #[arg(long)]
-        filter: Option<String>,
+        #[command(flatten)]
+        filter: ReadFilterArgs,
     },
     /// Export every matching document.
     ///
@@ -506,10 +505,10 @@ pub enum DocumentsCommand {
         #[arg(long)]
         limit: Option<u32>,
         /// Export an aggregation pipeline instead.
-        #[arg(long, conflicts_with_all = ["filter", "projection", "sort", "limit", "file"])]
+        #[arg(long, conflicts_with_all = ["filter", "filter_file", "projection", "sort", "limit", "file"])]
         pipeline: Option<String>,
         /// Read the pipeline from a file or stdin (-).
-        #[arg(long, value_hint = clap::ValueHint::FilePath, conflicts_with_all = ["filter", "projection", "sort", "limit"])]
+        #[arg(long, value_hint = clap::ValueHint::FilePath, conflicts_with_all = ["filter", "filter_file", "projection", "sort", "limit"])]
         file: Option<PathBuf>,
         /// Select the Extended JSON format.
         #[arg(long, value_enum, default_value = "relaxed")]
@@ -598,9 +597,8 @@ pub enum ExplainCommand {
     Count {
         database: String,
         collection: String,
-        /// Filter with a JSON query.
-        #[arg(long)]
-        filter: Option<String>,
+        #[command(flatten)]
+        filter: ReadFilterArgs,
         #[command(flatten)]
         verbosity: VerbosityArgs,
     },
@@ -620,12 +618,22 @@ pub struct WriteFilterArgs {
 }
 
 #[derive(Clone, Debug, Args)]
-pub struct QueryArgs {
+#[group(multiple = false)]
+pub struct ReadFilterArgs {
     /// Filter with a JSON query.
     ///
     /// Extended JSON, such as {"_id": {"$oid": "65f1a2b3c4d5e6f708192a3b"}}.
     #[arg(long)]
     pub filter: Option<String>,
+    /// Read a filter from a file or stdin (-).
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub filter_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct QueryArgs {
+    #[command(flatten)]
+    pub filter: ReadFilterArgs,
     /// Select fields with a JSON projection.
     #[arg(long)]
     pub projection: Option<String>,
