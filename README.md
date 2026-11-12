@@ -652,7 +652,7 @@ matched counts have not been checked. `emptyFilter` describes literal `{}`;
 a nonempty filter can still match all documents. Custom profile rules may add
 confirmation requirements beyond `requiresYesByDefault`.
 
-Only documents insert/update/delete/aggregate support `--dry-run`; other commands fail before side
+Only documents find/count/insert/update/delete/aggregate support `--dry-run`; other commands fail before side
 effects. After selecting the intended profile and running doctor, use a read-only
 count/query to assess the filter when needed. Execution still needs existing
 read-write access and confirmation guards. A preview grants no authorization,
@@ -729,3 +729,20 @@ is given. Explicit empty, malformed or unreadable files fail, and `--filter` plu
 unchanged. These are remote reads requiring normal preflight; count/find results
 are not a transaction snapshot or permission to write. Reuse the reviewed file
 and keep the selected profile/database/collection consistent.
+
+### Preview a read without connecting
+
+```sh
+mongodb-cli documents find app orders --filter '{"status":"failed"}' --projection '{"_id":0,"status":1}' --sort '{"createdAt":-1,"_id":1}' --limit 10 --dry-run --output json
+mongodb-cli documents count app orders --filter-file filter.json --dry-run --output json
+```
+
+These return `documents.plan` with `executed: false`, the canonical EJSON request
+and baseline read/write requirements. Find includes `requestedPage` and
+`pagingMode: profile_bounded_read`; requested limits are not the effective limits
+after loading a profile. Count has no paging object and does not calculate a
+count. `matchedCount` is null, and profile, authorization and index checks remain
+unchecked. `emptyFilter` identifies a literal empty filter, not an estimate of
+how many documents match. Query operator/server validity is not checked locally.
+After normal environment selection and doctor preflight, remove `--dry-run` to
+perform the authorized read. Explain/export still do not support dry-run.

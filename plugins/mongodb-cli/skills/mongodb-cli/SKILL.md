@@ -15,7 +15,7 @@ description: Load this before running any mongodb-cli command - it holds the pro
 
 `skills status` reports `current`, `different`, `missing` (no SKILL.md), or `unreadable`. It returns installed and bundled versions, paths, and relative file lists without printing file contents. Exit 0 means inspection completed, even if files differ; inspect `data[].status` for alignment.
 
-## Review document changes before execution
+## Preview document operations before execution
 
 `documents insert|update|delete --dry-run --output json` is local request planning, so it needs no connection or doctor preflight. Inspect the exact database/collection, canonical EJSON payload, `emptyFilter`, baseline access/confirmation requirements, and JavaScript marker. The result has `executed: false`; profile rules, index use, matched counts, and server validation are explicitly unchecked. A nonempty filter does not prove a small match set. Before real execution, select the user-intended profile, run doctor, and inspect/count matches when appropriate. Existing write authorization and `--yes` requirements still apply; preview alone grants no permission. Even `--yes --dry-run` performs no write.
 
@@ -24,6 +24,8 @@ For multiline updates, use `documents update ... --update-file <path|->` instead
 Use `--filter-file <path|->` for complex write predicates, including EJSON identifiers. Update/delete require either an inline filter or a filter file; missing/invalid files never mean “all documents”. For updates, at most one of filter and update may read stdin. Preview both inputs, verify their exact scope, then keep both files unchanged for the authorized execution; re-review if either changes. The same file works with documents find/count/export and explain find/count. After selecting the profile and running doctor, count or inspect that exact filter before writing when appropriate; keep profile and namespace fixed. Counts are not a snapshot or write authorization. Omitted filters still mean `{}` for reads, but explicit invalid files always fail. Export filter files cannot be combined with aggregation `--pipeline`/`--file`.
 
 For aggregation review, use `documents aggregate ... --dry-run --output json`. Inspect the canonical pipeline, `writeTargets`, JavaScript marker and baseline write/confirmation requirements. `requestedPage` is only the supplied options; profile caps are unchecked. `$out`/`$merge` reports `pagingMode: unpaged_write`: never assume `--limit` bounds those writes. `emptyFilter` is null for pipelines. Reuse the unchanged pipeline only after normal preflight and authorization; `--yes --dry-run` still never executes, and local parsing does not prove stage semantics or target validity.
+
+For read composition, `documents find|count --dry-run` validates input shape and returns a plan without connecting. Find preserves the canonical filter/projection and sort key order; its `requestedPage` is not a profile-adjusted page size. Count fetches no count, and `matchedCount` stays null. Do not treat baseline `requiresWriteAccess: false` as authorization or a successful index check. Choose the intended environment and run doctor before removing dry-run for an actual read. Explain/export remain unsupported in dry-run.
 
 ## Doctor version checks
 

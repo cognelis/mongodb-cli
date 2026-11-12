@@ -78,6 +78,12 @@ async function main() {
     const rejectedFilter = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'count', 'app', 'items', '--filter-file', invalidFilter], {encoding: 'utf8', env: cliEnv});
     assert.equal(rejectedFilter.status, 2);
     assert.ok(JSON.parse(rejectedFilter.stderr).error.message.includes('--filter-file: expected a JSON object'));
+    const findPlan = JSON.parse(run(process.execPath, [launcher, '--output', 'json', '--dry-run', 'documents', 'find', 'app', 'items', '--limit', '7'], {env: cliEnv}));
+    assert.equal(findPlan.data.command, 'documents.find');
+    assert.equal(findPlan.data.executed, false);
+    assert.equal(findPlan.data.requiresWriteAccess, false);
+    assert.equal(findPlan.data.emptyFilter, true);
+    assert.equal(findPlan.data.requestedPage.limit, 7);
     const invalid = spawnSync(process.execPath, [launcher, '--output', 'json', 'documents', 'find'], {encoding: 'utf8', env: cliEnv});
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout, '');

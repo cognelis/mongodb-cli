@@ -79,13 +79,15 @@ pub async fn run(cli: &Cli) -> Result<DispatchResult, AppError> {
             &cli.command,
             Command::Documents {
                 command: DocumentsCommand::Insert { .. }
+                    | DocumentsCommand::Find { .. }
+                    | DocumentsCommand::Count { .. }
                     | DocumentsCommand::Aggregate { .. }
                     | DocumentsCommand::Update { .. }
                     | DocumentsCommand::Delete { .. }
             }
         ) {
             return Err(AppError::validation(
-                "--dry-run supports documents insert, update, delete, and aggregate only",
+                "--dry-run supports documents find, count, insert, update, delete, and aggregate only",
             ));
         }
         let operation = Operation::parse(&cli.command)?;
@@ -1004,6 +1006,29 @@ impl Operation {
     fn document_plan(&self) -> Result<Value, AppError> {
         let canonical = |value: Bson| value.into_canonical_extjson();
         let (database, collection, request, empty_filter) = match self {
+            Self::DocumentsFind {
+                database,
+                collection,
+                query,
+                ..
+            } => (
+                database,
+                collection,
+                json!({"filter": canonical(Bson::Document(query.filter.clone())),
+                    "projection": query.projection.clone().map(|value| canonical(Bson::Document(value))),
+                    "sort": query.sort.clone().map(|value| canonical(Bson::Document(value)))}),
+                Some(query.filter.is_empty()),
+            ),
+            Self::DocumentsCount {
+                database,
+                collection,
+                filter,
+            } => (
+                database,
+                collection,
+                json!({"filter": canonical(Bson::Document(filter.clone()))}),
+                Some(filter.is_empty()),
+            ),
             Self::DocumentsInsert {
                 database,
                 collection,
@@ -1056,8 +1081,10 @@ impl Operation {
             "requiresWriteAccess": self.writes(), "requiresYesByDefault": self.destructive(), "profileRulesChecked": false, "indexCheckPerformed": false,
             "serverSideJavaScript": self.server_side_js(), "authorizationChecked": false,
             "validation": "local_shape_only", "matchedCount": null});
-        if let Self::DocumentsAggregate { page, .. } = self {
+        if let Self::DocumentsAggregate { .. } = self {
             plan["writeTargets"] = json!(self.write_targets());
+        }
+        if let Some(page) = self.page() {
             plan["requestedPage"] = json!({"limit": page.limit, "offset": page.offset, "responseBytesLimit": page.response_bytes_limit});
             plan["pagingMode"] = json!(if self.writes() {
                 "unpaged_write"

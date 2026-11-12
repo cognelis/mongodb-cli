@@ -325,3 +325,78 @@ fn aggregation_plans_identify_write_targets_without_applying_paging() {
         .code(2)
         .stdout("");
 }
+
+#[test]
+fn previews_find_and_count_without_reading_a_profile_or_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("broken.toml");
+    std::fs::write(&config, "bad = [").unwrap();
+    let file = dir.path().join("filter.json");
+    std::fs::write(&file, r#"{"id":{"$numberLong":"9007199254740993"}}"#).unwrap();
+    for action in ["find", "count"] {
+        let mut command = cli(&config);
+        command
+            .args(["documents", action, "app", "items", "--filter-file"])
+            .arg(&file);
+        if action == "find" {
+            command.args([
+                "--projection",
+                r#"{"id":1,"_id":0}"#,
+                "--sort",
+                r#"{"createdAt":-1,"_id":1}"#,
+                "--limit",
+                "7",
+                "--offset",
+                "2",
+            ]);
+        }
+        let result = command.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let data = serde_json::from_slice::<Value>(&result.stdout).unwrap()["data"].clone();
+        assert_eq!(data["command"], format!("documents.{action}"));
+        assert_eq!(data["executed"], false);
+        assert_eq!(data["requiresWriteAccess"], false);
+        assert_eq!(data["requiresYesByDefault"], false);
+        assert_eq!(data["emptyFilter"], false);
+        assert_eq!(data["profileRulesChecked"], false);
+        assert!(data["matchedCount"].is_null());
+        assert_eq!(
+            data["request"]["filter"]["id"]["$numberLong"],
+            "9007199254740993"
+        );
+        if action == "find" {
+            assert_eq!(data["requestedPage"]["limit"], 7);
+            assert_eq!(data["requestedPage"]["offset"], 2);
+            assert_eq!(data["pagingMode"], "profile_bounded_read");
+            assert_eq!(
+                data["request"]["sort"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                ["createdAt", "_id"]
+            );
+        } else {
+            assert!(data.get("requestedPage").is_none());
+        }
+    }
+    cli(&config)
+        .args(["documents", "find", "app", "items", "--sort", "[]"])
+        .assert()
+        .code(2)
+        .stdout("");
+    let empty = cli(&config)
+        .args(["documents", "count", "app", "items"])
+        .output()
+        .unwrap();
+    assert!(empty.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&empty.stdout).unwrap()["data"]["emptyFilter"],
+        true
+    );
+}

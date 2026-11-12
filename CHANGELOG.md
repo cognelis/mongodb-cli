@@ -7,6 +7,11 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ### Added
 
+- `documents find|count --dry-run` validates and previews read inputs offline,
+  including canonical EJSON filters, projections and ordered sorts. Find reports
+  requested paging separately from unchecked profile limits; no data or counts
+  are fetched, and read authorization/index checks are not implied.
+
 - `--filter-file <path|->` now also supports documents find/count/export and
   explain find/count. Read filters remain optional, but explicit invalid/unreadable
   files fail rather than becoming `{}`. Inline/file inputs and export pipeline/filter

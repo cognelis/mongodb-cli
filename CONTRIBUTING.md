@@ -254,3 +254,11 @@ Skill 增加任务分流：本地维护直接使用离线命令，数据任务�
 验收：工作区测试含临时 mongod，覆盖文件/标准输入计数、查询、执行计划、导出及后续写入；无效/缺失文件、冲突输入在连接前拒绝。9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本及 npm tarball 检查通过。Docker 与真实知识库可选测试未启用。Rust CLI 结构构造方需要适配 ReadFilterArgs，现有 CLI 参数用法保持兼容。
 
 新行为回归均先在原实现确认失败，再完成实现和验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他平台或模型级 Skill 效果。
+
+## 第十四轮 RSI：查询复用与读取范围控制（2026-11-12）
+
+将 documents find/count 纳入离线 dry-run，复用读取输入解析和 document_plan。返回 canonical EJSON 过滤、投影及有序排序；find 的 requestedPage 与实际 profile 限制分开，count 不获取计数。Skill 明确权限、索引、有效分页及服务端运算符仍未验证，实际读取需完成环境选择和诊断。
+
+验收：工作区测试含临时 mongod，9 项 Node、14 项 Python 测试、fmt/clippy、Agent 集成、版本及 npm tarball 检查通过。新增用例在坏配置和不可连接 URI 下成功预览，覆盖 BSON 精度、排序键顺序、分页标记、空过滤及无效排序。Docker 与真实知识库可选测试未启用。
+
+新增行为用例先在原实现确认失败，再完成实现和全量验证。保持 Unreleased，不递增版本、不推送发布、不刷新全局安装或插件。未验证生产服务、其他平台或模型级 Skill 效果。
