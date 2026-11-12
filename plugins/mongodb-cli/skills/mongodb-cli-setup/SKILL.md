@@ -1,5 +1,5 @@
 ---
-version: 0.6.0
+version: 0.7.0
 name: mongodb-cli-setup
 description: Set up the mongodb-cli executable - named profiles and their descriptions, read-only or read-write access, the credential store (keychain, security, or file, including repeated keychain prompts), Atlas credentials, Atlas Local in Docker, and doctor. For configuring the MongoDB MCP server, or when it is configured and mongodb-cli was not requested, use the official mongodb-mcp-setup skill.
 license: Apache-2.0

@@ -5,74 +5,45 @@ User-visible changes are recorded here. Versions follow the project policy in
 
 ## [Unreleased]
 
-### Added
-
-- `documents find|count --dry-run` validates and previews read inputs offline,
-  including canonical EJSON filters, projections and ordered sorts. Find reports
-  requested paging separately from unchecked profile limits; no data or counts
-  are fetched, and read authorization/index checks are not implied.
-
-- `--filter-file <path|->` now also supports documents find/count/export and
-  explain find/count. Read filters remain optional, but explicit invalid/unreadable
-  files fail rather than becoming `{}`. Inline/file inputs and export pipeline/filter
-  inputs are mutually exclusive. Rust CLI callers constructing `QueryArgs` or the
-  count command variants now wrap their filter in `ReadFilterArgs`.
-
-- `documents aggregate --dry-run` previews read and write pipelines offline.
-  It reports canonical EJSON, `$out`/`$merge` write targets, baseline authorization
-  requirements, JavaScript markers and requested paging. Write pipelines explicitly
-  report unpaged execution; effective profile limits and server semantics remain unchecked.
-
-- `documents update|delete --filter-file <path|->` reads a required EJSON
-  filter from a file or stdin instead of `--filter`. Missing, conflicting, invalid
-  or unreadable filters fail without broadening scope. An update cannot read both
-  its filter and update from stdin. Existing write guards apply unchanged.
-
-- `documents update --update-file <path|->` reads an Extended JSON update
-  document or pipeline from a file or stdin. It is mutually exclusive with
-  `--update` and shares the same parsing, dry-run, and execution guards.
-
-- `documents insert|update|delete --dry-run` prints an unexecuted write-intent
-  plan without loading connection credentials or contacting MongoDB. Canonical
-  Extended JSON preserves BSON types. Plans flag empty filters, baseline write/
-  confirmation requirements, and server-side JavaScript; profile permissions,
-  index checks, server validation, and matched counts remain explicitly unchecked.
-- Unsupported commands with `--dry-run` fail before any command side effects.
-
-### Fixed
-
-- Update inputs must be a document or an array of pipeline documents before
-  connection resolution, shared by preview and execution paths.
-
-
-## [0.6.0] - 2026-11-11
+## [0.7.0] - 2026-11-12
 
 ### Added
 
-- `skills status [--target all|codex|claude]` performs an offline, read-only
-  inspection of managed Skill installations. It reports installed/bundled
-  versions and changed, missing, or unreadable files, including same-version
-  edits and missing references, without modifying user files.
-- The core Skill routes local maintenance directly to offline commands and
-  reserves profile/doctor preflight for data workflows. It describes the
-  inspect, review, refresh, verify, and context-reload sequence.
-
-## [0.5.2] - 2026-11-11
-
-### Fixed
-
-- Document pagination no longer emits a repeated or overflowed `nextOffset`, or
-  recommends retrying that offset. Partial data and `hasMore` are preserved;
-  warnings suggest narrowing the filter or using `documents export`.
-
-## [0.5.1] - 2026-11-11
+- `skills status [--target all|codex|claude]` inspects installed Skill files offline,
+  reporting missing, changed and unreadable files, including same-version drift.
+- `documents find|count|insert|update|delete|aggregate --dry-run` previews parsed
+  requests without connecting. Plans preserve canonical EJSON types and sort order,
+  show baseline write/confirmation requirements and JavaScript markers, and clearly
+  distinguish requested paging from unchecked profile limits and authorization.
+- Aggregation previews report `$out`/`$merge` destinations and unpaged write behavior.
+  Even `--yes --dry-run` executes no database operation; count previews fetch no count.
+- `documents update --update-file <path|->` reads a reviewed update document or
+  pipeline from a file or stdin, mutually exclusive with inline `--update`.
+- `--filter-file <path|->` works across documents find/count/export/update/delete and
+  explain find/count, allowing one filter to be reused for inspection and execution.
+  Conflicting sources, unreadable/invalid files and two update inputs using stdin
+  are rejected without broadening scope.
 
 ### Fixed
 
-- `--require-index` recognizes indexed OR, sort-merge, and index-intersection
-  plans with multiple `inputStages`, instead of misclassifying them as collection
-  scans. Every winning-plan branch must use an index; unknown, empty, and
-  collection-scan branches remain refused.
+- Index requirements recognize indexed OR, sort-merge and intersection plans with
+  multiple branches, while still refusing collection scans, unknown or empty plans.
+- Pagination no longer reports repeated or overflowed next offsets. Partial data and
+  completeness warnings are retained.
+- Update inputs are locally checked as documents or document pipelines before
+  connection resolution, shared by preview and execution.
+
+### Migration notes
+
+- Existing CLI syntax remains supported. Rust callers constructing CLI arguments
+  must accommodate `ReadFilterArgs`, `WriteFilterArgs` and the new file-input fields;
+  `QueryArgs.filter` and count command filters now use `ReadFilterArgs`.
+- Read filters remain optional; write filters remain explicit. Export cannot mix
+  find-filter files and aggregation input. Invalid files never become an empty filter.
+- Offline plans do not validate server operators, effective profile limits, matching
+  counts, indexes or authorization. `$out`/`$merge` writes are not capped by automatic
+  pagination. Skills describe exact-input reuse and preflight; JSON envelope versions
+  remain unchanged.
 
 ## [0.5.0] - 2026-11-11
 

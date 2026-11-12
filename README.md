@@ -632,7 +632,7 @@ again afterward, then reload the agent context. File alignment does not prove
 that the running agent loaded the new Skill. Doctor remains the connection and
 version overview; this command provides per-file installation detail.
 
-## Unreleased: review document write intent offline
+## review document write intent offline
 
 ```sh
 mongodb-cli documents update app orders --filter '{"status":"failed"}' --update '{"$set":{"reviewed":true}}' --dry-run --output json
